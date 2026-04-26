@@ -1,9 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, storages_status } from '@prisma/client';
-import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
 import {
-  CreateStorageDto,
   DeleteStorageResponseDto,
   StorageResponseDto,
   UpdateStorageDto,
@@ -17,43 +15,6 @@ export class StoragesCommandService {
     private readonly prisma: PrismaService,
     private readonly storagePolicyService: StoragePolicyService,
   ) {}
-
-  async createStorage(
-    storeId: string,
-    dto: CreateStorageDto,
-  ): Promise<StorageResponseDto> {
-    await this.storagePolicyService.assertStoreExists(storeId);
-    const number = dto.number.trim();
-    await this.storagePolicyService.assertStorageNumberAvailable(
-      storeId,
-      number,
-    );
-
-    try {
-      const storage = await this.prisma.storages.create({
-        data: {
-          id: `storage_${randomUUID()}`,
-          store_id: storeId,
-          number,
-          type: dto.type,
-          status: storages_status.available,
-          width: dto.width ?? null,
-          height: dto.height ?? null,
-          depth: dto.depth ?? null,
-          pricing: dto.pricing,
-          floor: dto.floor ?? null,
-          section: dto.section?.trim() ?? null,
-          row_num: dto.row ?? null,
-          column_num: dto.column ?? null,
-        },
-      });
-
-      return toStorageResponse(storage);
-    } catch (error) {
-      this.throwDuplicateStorageNumberIfNeeded(error, number);
-      throw error;
-    }
-  }
 
   async updateStorage(
     storeId: string,

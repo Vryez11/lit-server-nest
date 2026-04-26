@@ -76,13 +76,23 @@ Storages API는 기존 경로를 유지합니다.
 ```txt
 GET    /api/storages
 GET    /api/storages/:id
-POST   /api/storages
 PUT    /api/storages/:id
 DELETE /api/storages/:id
 ```
 
 프론트 요청/응답 구조는 기존 Express 서버와 최대한 호환되게 유지했습니다.
 다만 운영 안전성을 위해 아래 정책이 강화되었습니다.
+
+### 보관함 생성 경로 변경
+
+`POST /api/storages`는 제공하지 않습니다.
+보관함은 매장이 직접 개별 생성하지 않고 `PUT /api/store/settings`의 `storageSettings` 저장 흐름에서 자동 동기화됩니다.
+
+프론트 필요 작업:
+
+- 보관함 개수/타입 증감 UI는 `PUT /api/store/settings`를 호출
+- 개별 보관함 생성 버튼이나 `POST /api/storages` 호출 제거
+- 개별 보관함 화면에서는 위치, 크기, 가격, 상태 보정만 `PUT /api/storages/:id`로 처리
 
 ### DELETE 동작 변경
 

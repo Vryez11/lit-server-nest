@@ -6,14 +6,12 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  Post,
   Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -22,7 +20,6 @@ import { CurrentStoreId } from '../auth/decorators/current-store.decorator';
 import { StoreAuthGuard } from '../auth/guards/store-auth.guard';
 import { ListStoragesQueryDto } from './dto/list-storages-query.dto';
 import {
-  CreateStorageDto,
   DeleteStorageResponseDto,
   StorageListResponseDto,
   StorageResponseDto,
@@ -56,16 +53,6 @@ export class StoragesController {
   @ApiOkResponse({ type: StorageResponseDto })
   getStorage(@CurrentStoreId() storeId: string, @Param('id') id: string) {
     return this.storagesQueryService.getStorage(storeId, id);
-  }
-
-  @Post()
-  @ApiOperation({ summary: '매장 보관함을 생성합니다.' })
-  @ApiCreatedResponse({ type: StorageResponseDto })
-  createStorage(
-    @CurrentStoreId() storeId: string,
-    @Body() dto: CreateStorageDto,
-  ) {
-    return this.storagesCommandService.createStorage(storeId, dto);
   }
 
   @Put(':id')
