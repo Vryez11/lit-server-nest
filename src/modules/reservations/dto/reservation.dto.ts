@@ -192,6 +192,13 @@ export class CreateReservationDto {
   customerId?: string;
 }
 
+export class CreateCustomerReservationDto extends CreateReservationDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(255)
+  declare storeId: string;
+}
+
 export class ListStoreReservationsQueryDto {
   @ApiPropertyOptional({ enum: reservations_status })
   @IsOptional()
@@ -208,6 +215,37 @@ export class ListStoreReservationsQueryDto {
   @IsString()
   @MaxLength(255)
   customerId?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit = 20;
+}
+
+export class ListCustomerReservationsQueryDto {
+  @ApiPropertyOptional({ enum: reservations_status })
+  @IsOptional()
+  @IsEnum(reservations_status)
+  status?: reservations_status;
+
+  @ApiPropertyOptional({ example: '2026-04-27' })
+  @IsOptional()
+  @IsDateString({ strict: true })
+  date?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  storeId?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

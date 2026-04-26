@@ -5,6 +5,7 @@ import {
   StoreAccessTokenPayload,
   StoreRefreshTokenPayload,
 } from '../types/store-token-payload.type';
+import { CustomerAccessTokenPayload } from '../types/customer-token-payload.type';
 
 @Injectable()
 export class TokenService {
@@ -47,10 +48,35 @@ export class TokenService {
       'JWT_ACCESS_TOKEN_SECRET',
     );
 
-    if (payload.type !== 'access') {
+    if (
+      payload.type !== 'access' ||
+      typeof payload.storeId !== 'string' ||
+      payload.storeId.length === 0
+    ) {
       throw new UnauthorizedException({
         code: 'TOKEN_INVALID',
         message: 'Access Token이 유효하지 않습니다.',
+      });
+    }
+
+    return payload;
+  }
+
+  verifyCustomerAccessToken(token: string): CustomerAccessTokenPayload {
+    const payload = this.verify<CustomerAccessTokenPayload>(
+      token,
+      'JWT_ACCESS_TOKEN_SECRET',
+    );
+
+    if (
+      payload.type !== 'access' ||
+      payload.role !== 'customer' ||
+      typeof payload.customerId !== 'string' ||
+      payload.customerId.length === 0
+    ) {
+      throw new UnauthorizedException({
+        code: 'INVALID_TOKEN',
+        message: '고객 토큰이 아닙니다.',
       });
     }
 

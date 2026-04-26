@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { CustomerReservationsController } from './customer-reservations.controller';
 import { ReservationsController } from './reservations.controller';
 import { ReservationCommandService } from './services/reservation-command.service';
 import { ReservationQueryService } from './services/reservation-query.service';
@@ -8,7 +9,7 @@ import { ReservationStorageService } from './services/reservation-storage.servic
 
 @Module({
   imports: [AuthModule],
-  controllers: [ReservationsController],
+  controllers: [ReservationsController, CustomerReservationsController],
   providers: [
     ReservationQueryService,
     ReservationCommandService,

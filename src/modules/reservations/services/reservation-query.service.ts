@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { getKstDateRange } from '../../dashboard/utils/kst-date-range.util';
 import {
+  ListCustomerReservationsQueryDto,
   ListStoreReservationsQueryDto,
   ReservationListResponseDto,
   ReservationResponseDto,
@@ -50,11 +51,66 @@ export class ReservationQueryService {
     return toReservationResponse(reservation);
   }
 
+  async listCustomerReservations(
+    customerId: string,
+    query: ListCustomerReservationsQueryDto,
+  ): Promise<ReservationListResponseDto> {
+    const page = query.page;
+    const limit = query.limit;
+    const where = this.buildCustomerReservationWhere(customerId, query);
+    const [total, reservations] = await Promise.all([
+      this.prisma.reservations.count({ where }),
+      this.prisma.reservations.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items: reservations.map(toReservationResponse),
+      page,
+      limit,
+      total,
+    };
+  }
+
+  async getCustomerReservation(
+    customerId: string,
+    reservationId: string,
+  ): Promise<ReservationResponseDto> {
+    const reservation = await this.findCustomerReservationOrThrow(
+      customerId,
+      reservationId,
+    );
+
+    return toReservationResponse(reservation);
+  }
+
   async findStoreReservationOrThrow(storeId: string, reservationId: string) {
     const reservation = await this.prisma.reservations.findFirst({
       where: {
         id: reservationId,
         store_id: storeId,
+      },
+    });
+
+    if (!reservation) {
+      throw this.reservationNotFound();
+    }
+
+    return reservation;
+  }
+
+  async findCustomerReservationOrThrow(
+    customerId: string,
+    reservationId: string,
+  ) {
+    const reservation = await this.prisma.reservations.findFirst({
+      where: {
+        id: reservationId,
+        customer_id: customerId,
       },
     });
 
@@ -84,6 +140,29 @@ export class ReservationQueryService {
       store_id: storeId,
       ...(query.status ? { status: query.status } : {}),
       ...(query.customerId ? { customer_id: query.customerId } : {}),
+      ...(dateRange
+        ? {
+            start_time: {
+              gte: dateRange.start,
+              lt: dateRange.endExclusive,
+            },
+          }
+        : {}),
+    };
+  }
+
+  private buildCustomerReservationWhere(
+    customerId: string,
+    query: ListCustomerReservationsQueryDto,
+  ): Prisma.reservationsWhereInput {
+    const dateRange = query.date
+      ? getKstDateRange({ from: query.date, to: query.date }, 1)
+      : null;
+
+    return {
+      customer_id: customerId,
+      ...(query.storeId ? { store_id: query.storeId } : {}),
+      ...(query.status ? { status: query.status } : {}),
       ...(dateRange
         ? {
             start_time: {

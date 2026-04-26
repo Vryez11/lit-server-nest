@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Prisma,
   reservations_payment_status,
@@ -9,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { RELEASE_STORAGE_STATUSES } from '../reservation.constants';
 import {
+  CreateCustomerReservationDto,
   CreateReservationDto,
   ReservationResponseDto,
   ReservationStatusResponseDto,
@@ -59,6 +64,62 @@ export class ReservationCommandService {
         id: `res_${randomUUID()}`,
         store_id: storeId,
         customer_id: dto.customerId ?? `cust_${Date.now()}`,
+        customer_name: dto.customerName,
+        customer_phone: dto.phoneNumber,
+        customer_email: dto.email ?? null,
+        requested_storage_type: dto.storageType,
+        status: reservations_status.pending,
+        start_time: startTime,
+        end_time: endTime,
+        request_time: dto.requestTime ? new Date(dto.requestTime) : new Date(),
+        duration: dto.duration,
+        bag_count: dto.bagCount,
+        total_amount: dto.price ?? 0,
+        message: dto.message ?? null,
+        special_requests: dto.specialRequests ?? null,
+        luggage_image_urls: dto.luggageImageUrls ?? Prisma.JsonNull,
+        payment_status: reservations_payment_status.pending,
+        payment_method: dto.paymentMethod ?? 'card',
+        qr_code: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+
+    return toReservationResponse(reservation);
+  }
+
+  async createCustomerReservation(
+    customerId: string,
+    dto: CreateCustomerReservationDto,
+  ): Promise<ReservationResponseDto> {
+    if (!dto.storeId) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '필수 정보가 누락되었습니다.',
+        details: { required: ['storeId'] },
+      });
+    }
+
+    await this.assertStoreExists(dto.storeId);
+
+    const startTime = new Date(dto.startTime);
+    const endTime = dto.endTime
+      ? new Date(dto.endTime)
+      : this.addHours(startTime, dto.duration);
+
+    if (endTime <= startTime) {
+      throw new BadRequestException({
+        code: 'INVALID_RESERVATION_TIME',
+        message: '예약 종료 시간은 시작 시간보다 늦어야 합니다.',
+      });
+    }
+
+    const reservation = await this.prisma.reservations.create({
+      data: {
+        id: `res_${randomUUID()}`,
+        store_id: dto.storeId,
+        customer_id: customerId,
         customer_name: dto.customerName,
         customer_phone: dto.phoneNumber,
         customer_email: dto.email ?? null,
@@ -269,6 +330,45 @@ export class ReservationCommandService {
     });
   }
 
+  async customerCheckout(
+    customerId: string,
+    reservationId: string,
+  ): Promise<ReservationStatusResponseDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservations.findFirst({
+        where: {
+          id: reservationId,
+          customer_id: customerId,
+        },
+      });
+
+      if (!reservation) {
+        throw this.reservationQueryService.reservationNotFound();
+      }
+
+      this.reservationStatusService.assertCanCheckout(reservation.status);
+
+      await tx.reservations.update({
+        where: { id: reservation.id },
+        data: {
+          status: reservations_status.completed,
+          actual_end_time: reservation.actual_end_time ?? new Date(),
+          updated_at: new Date(),
+        },
+      });
+
+      await this.reservationStorageService.releaseStorageIfAny(
+        tx,
+        reservation.storage_id,
+      );
+
+      return {
+        id: reservation.id,
+        status: reservations_status.completed,
+      };
+    });
+  }
+
   normalizeStatus(status: string): reservations_status {
     return this.reservationStatusService.normalizeStatus(status);
   }
@@ -283,5 +383,19 @@ export class ReservationCommandService {
       : [];
 
     return [...current, ...newUrls];
+  }
+
+  private async assertStoreExists(storeId: string): Promise<void> {
+    const store = await this.prisma.stores.findUnique({
+      where: { id: storeId },
+      select: { id: true },
+    });
+
+    if (!store) {
+      throw new NotFoundException({
+        code: 'STORE_NOT_FOUND',
+        message: '점포를 찾을 수 없습니다.',
+      });
+    }
   }
 }

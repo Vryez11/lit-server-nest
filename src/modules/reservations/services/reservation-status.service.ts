@@ -49,6 +49,17 @@ export class ReservationStatusService {
     this.throwInvalidStatus('체크인 가능한 상태가 아닙니다.', currentStatus);
   }
 
+  assertCanCheckout(currentStatus: reservations_status | null): void {
+    if (
+      currentStatus === reservations_status.confirmed ||
+      currentStatus === reservations_status.in_progress
+    ) {
+      return;
+    }
+
+    this.throwInvalidStatus('체크아웃 가능한 상태가 아닙니다.', currentStatus);
+  }
+
   assertCanTransition(
     currentStatus: reservations_status | null,
     nextStatus: reservations_status,
