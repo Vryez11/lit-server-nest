@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AuthThrottlerGuard } from './guards/auth-throttler.guard';
+import { CustomerAuthGuard } from './guards/customer-auth.guard';
 import { StoreAuthGuard } from './guards/store-auth.guard';
 import { EmailVerificationService } from './services/email-verification.service';
 import { MailService } from './services/mail.service';
@@ -43,7 +44,14 @@ import { TokenService } from './services/token.service';
     PasswordService,
     TokenService,
     StoreAuthGuard,
+    CustomerAuthGuard,
   ],
-  exports: [StoreAuthGuard, AuthThrottlerGuard, TokenService, PasswordService],
+  exports: [
+    StoreAuthGuard,
+    CustomerAuthGuard,
+    AuthThrottlerGuard,
+    TokenService,
+    PasswordService,
+  ],
 })
 export class AuthModule {}

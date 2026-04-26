@@ -205,3 +205,31 @@ PUT  /api/reservations/:id/checkin
 - 예약 취소/거절/완료 상태로 변경되면 연결된 보관함을 `available`로 반납합니다.
 - 완료/취소/거절된 예약은 다른 상태로 다시 변경할 수 없습니다.
 - 날짜 필터는 KST 기준 일자 범위로 처리합니다.
+
+## Customer Reservations 모듈 이전 영향
+
+로그인 고객용 예약 API가 기존 Express 서버와 같은 경로로 추가되었습니다.
+모든 엔드포인트는 고객 access token이 필요합니다.
+
+```txt
+GET  /api/customer/reservations
+GET  /api/customer/reservations/:id
+POST /api/customer/reservations
+PUT  /api/customer/reservations/:id/checkout
+```
+
+프론트 요청/응답 구조는 기존 Express 서버와 최대한 호환되게 유지했습니다.
+
+호환 유지 사항:
+
+- 예약 목록 응답은 `items`, `page`, `limit`, `total` 구조를 유지합니다.
+- 예약 응답 필드는 `storeId`, `customerId`, `customerName`, `phoneNumber`, `storageType`, `paymentStatus`처럼 camelCase로 반환됩니다.
+- 고객 예약 생성 요청은 기존처럼 `storeId`, `customerName`, `phoneNumber`, `startTime`, `duration`, `bagCount`, `storageType`이 필요합니다.
+
+운영 보정 사항:
+
+- 고객 예약 조회/상세/체크아웃은 항상 JWT의 `customerId` 기준으로 제한합니다.
+- 요청 body의 `customerId`는 신뢰하지 않고, 인증 토큰의 `customerId`를 사용합니다.
+- 체크아웃은 `confirmed`, `in_progress` 상태에서만 허용합니다.
+- 체크아웃은 트랜잭션으로 처리하며 예약을 `completed`로 변경하고 연결된 보관함을 `available`로 반납합니다.
+- 고객 토큰은 기존 Express와 동일하게 `{ customerId, role: 'customer', type: 'access' }` 형태를 검증합니다.

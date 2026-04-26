@@ -24,6 +24,9 @@ const createReservationCommandService = () => {
     reservations: {
       create: jest.fn(),
     },
+    stores: {
+      findUnique: jest.fn(),
+    },
     $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
       callback(tx),
     ),
@@ -117,6 +120,41 @@ describe('ReservationCommandService', () => {
     expect(result).toEqual({
       id: 'res_1',
       status: reservations_status.cancelled,
+    });
+  });
+
+  it('completes a customer reservation and releases assigned storage on checkout', async () => {
+    const { service, tx } = createReservationCommandService();
+
+    tx.reservations.findFirst.mockResolvedValue({
+      id: 'res_1',
+      customer_id: 'cust_1',
+      status: reservations_status.in_progress,
+      storage_id: 'storage_1',
+      actual_end_time: null,
+    });
+
+    const result = await service.customerCheckout('cust_1', 'res_1');
+
+    expect(tx.reservations.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'res_1',
+        customer_id: 'cust_1',
+      },
+    });
+    expect(tx.reservations.update).toHaveBeenCalledWith({
+      where: { id: 'res_1' },
+      data: expect.objectContaining({
+        status: reservations_status.completed,
+      }),
+    });
+    expect(tx.storages.update).toHaveBeenCalledWith({
+      where: { id: 'storage_1' },
+      data: expect.objectContaining({ status: storages_status.available }),
+    });
+    expect(result).toEqual({
+      id: 'res_1',
+      status: reservations_status.completed,
     });
   });
 });
