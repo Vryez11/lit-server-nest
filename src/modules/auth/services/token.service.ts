@@ -5,7 +5,10 @@ import {
   StoreAccessTokenPayload,
   StoreRefreshTokenPayload,
 } from '../types/store-token-payload.type';
-import { CustomerAccessTokenPayload } from '../types/customer-token-payload.type';
+import {
+  CustomerAccessTokenPayload,
+  CustomerRefreshTokenPayload,
+} from '../types/customer-token-payload.type';
 
 @Injectable()
 export class TokenService {
@@ -31,6 +34,44 @@ export class TokenService {
   generateRefreshToken(storeId: string, email: string): string {
     return this.jwtService.sign(
       { storeId, email, type: 'refresh' } satisfies StoreRefreshTokenPayload,
+      {
+        secret: this.configService.getOrThrow<string>(
+          'JWT_REFRESH_TOKEN_SECRET',
+        ),
+        expiresIn: toSeconds(
+          this.configService.getOrThrow<string>('JWT_REFRESH_TOKEN_EXPIRES_IN'),
+        ),
+      },
+    );
+  }
+
+  generateCustomerAccessToken(customerId: string, provider?: string): string {
+    return this.jwtService.sign(
+      {
+        customerId,
+        role: 'customer',
+        provider,
+        type: 'access',
+      } satisfies CustomerAccessTokenPayload,
+      {
+        secret: this.configService.getOrThrow<string>(
+          'JWT_ACCESS_TOKEN_SECRET',
+        ),
+        expiresIn: toSeconds(
+          this.configService.getOrThrow<string>('JWT_ACCESS_TOKEN_EXPIRES_IN'),
+        ),
+      },
+    );
+  }
+
+  generateCustomerRefreshToken(customerId: string, provider?: string): string {
+    return this.jwtService.sign(
+      {
+        customerId,
+        role: 'customer',
+        provider,
+        type: 'refresh',
+      } satisfies CustomerRefreshTokenPayload,
       {
         secret: this.configService.getOrThrow<string>(
           'JWT_REFRESH_TOKEN_SECRET',
@@ -93,6 +134,27 @@ export class TokenService {
       throw new UnauthorizedException({
         code: 'TOKEN_INVALID',
         message: 'Refresh Token이 유효하지 않습니다.',
+      });
+    }
+
+    return payload;
+  }
+
+  verifyCustomerRefreshToken(token: string): CustomerRefreshTokenPayload {
+    const payload = this.verify<CustomerRefreshTokenPayload>(
+      token,
+      'JWT_REFRESH_TOKEN_SECRET',
+    );
+
+    if (
+      payload.type !== 'refresh' ||
+      payload.role !== 'customer' ||
+      typeof payload.customerId !== 'string' ||
+      payload.customerId.length === 0
+    ) {
+      throw new UnauthorizedException({
+        code: 'INVALID_REFRESH_TOKEN',
+        message: 'refreshToken이 유효하지 않습니다.',
       });
     }
 
