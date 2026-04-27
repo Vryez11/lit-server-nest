@@ -268,3 +268,43 @@ PUT  /api/guest/reservations/:id/cancel
 - 비회원 예약 취소는 전화번호 검증 후 가능하며, 이미 시작된 예약은 취소할 수 없습니다.
 - 비회원 예약 취소 시 연결된 보관함이 있으면 `available`로 반납합니다.
 - 미결제 guest pending 예약은 cleanup API에서 30분 TTL 기준으로 `cancelled` 처리합니다.
+
+## Customer Auth 모듈 이전 영향
+
+고객 인증 API가 기존 Express 서버와 같은 경로로 추가되었습니다.
+
+```txt
+POST   /api/customer/auth/social-login
+POST   /api/customer/auth/signup
+POST   /api/customer/auth/refresh
+POST   /api/customer/auth/logout
+DELETE /api/customer/auth/withdraw
+GET    /api/customer/auth/me
+PATCH  /api/customer/auth/me
+GET    /api/customer/auth/notification-settings
+PUT    /api/customer/auth/notification-settings
+```
+
+호환 유지 사항:
+
+- 고객 access token payload는 기존처럼 `{ customerId, role: "customer", provider, type: "access" }` 구조를 사용합니다.
+- 고객 refresh token payload는 `{ customerId, role: "customer", provider, type: "refresh" }` 구조를 사용합니다.
+- 소셜 로그인/가입 응답은 기존 Express의 `isNewUser`, `accessToken`, `refreshToken`, `providerRefreshToken`, `userId`, `customerId` 필드를 유지합니다.
+- `POST /api/customer/auth/social-login`은 `accessToken`과 `socialAccessToken`을 모두 provider access token 입력으로 허용합니다.
+- `POST /api/customer/auth/logout`은 기존처럼 refresh token이 없어도 성공 응답을 반환합니다.
+- `GET /api/customer/auth/notification-settings`는 현재 스키마에 알림 설정 컬럼이 없으므로 기존 Express fallback과 같은 기본값을 반환합니다.
+- `PUT /api/customer/auth/notification-settings`는 기존 Express와 동일하게 `DB_MIGRATION_NEEDED` 에러를 반환합니다.
+
+운영 보정 사항:
+
+- 소셜 로그인은 provider access token을 서버에서 검증합니다. 현재 구현은 Kakao 검증을 지원합니다.
+- refresh token은 재발급 시 DB에 저장된 token을 새 token으로 교체하는 rotation 방식입니다.
+- 탈퇴는 고객 row를 삭제하지 않고 개인정보를 익명화하며, refresh token과 소셜 연결 정보는 삭제합니다.
+- 고객 보호 API는 JWT의 `customerId`만 신뢰하고 request body의 고객 식별자는 사용하지 않습니다.
+- 소셜 로그인과 refresh API에는 rate limit을 적용했습니다. 서버를 여러 대로 확장할 때는 throttler storage를 Redis 같은 공유 저장소로 교체해야 합니다.
+
+프론트 필요 작업:
+
+- `/refresh` 응답의 새 `refreshToken`을 저장 중인 refresh token과 교체해야 합니다.
+- 여러 화면에서 동시에 `/refresh`가 발생하지 않도록 refresh 요청 단일화가 필요합니다.
+- Kakao 외 provider를 실제로 사용하려면 provider별 access token 검증 흐름이 추가된 뒤 활성화해야 합니다.
