@@ -45,6 +45,15 @@ export class StorePinService {
   }
 
   async checkPin(storeId: string, dto: StorePinDto) {
+    await this.verifyPinForStore(storeId, dto.pin);
+
+    return {
+      storeId,
+      matched: true as const,
+    };
+  }
+
+  async verifyPinForStore(storeId: string, pin: string): Promise<void> {
     const store = await this.prisma.stores.findUnique({
       where: { id: storeId },
       select: {
@@ -80,7 +89,7 @@ export class StorePinService {
     }
 
     const matched = await this.passwordService.compare(
-      dto.pin,
+      pin,
       store.store_pin_hash,
     );
 
@@ -117,10 +126,7 @@ export class StorePinService {
       },
     });
 
-    return {
-      storeId,
-      matched: true as const,
-    };
+    return;
   }
 
   private async assertStoreExists(storeId: string): Promise<void> {

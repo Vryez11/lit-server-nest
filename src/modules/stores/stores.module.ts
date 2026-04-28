@@ -17,5 +17,6 @@ import { StoresService } from './stores.service';
     StoreStorageSyncService,
     StorePinService,
   ],
+  exports: [StorePinService],
 })
 export class StoresModule {}
