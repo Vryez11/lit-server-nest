@@ -336,3 +336,60 @@ GET /api/customer/stores/:storeId
 
 - 기존 목록/상세 조회 경로는 그대로 사용할 수 있습니다.
 - 목록 화면에서 전체 리뷰가 필요하다면 향후 리뷰 전용 API 연동으로 분리해야 합니다.
+
+## Coupons 모듈 이전 영향
+
+쿠폰 API가 기존 Express 서버 경로를 유지하면서 새 쿠폰 정책 기준으로 이전되었습니다.
+
+```txt
+GET    /api/customer/coupons
+GET    /api/customer/coupons/stats
+GET    /api/customer/coupons/:id
+POST   /api/customer/coupons/claim
+POST   /api/customer/coupons/:id/redeem
+POST   /api/customer/coupons/:id/use
+
+POST   /api/store/coupons/policies
+GET    /api/store/coupons/policies
+GET    /api/store/coupons/policies/:id
+PUT    /api/store/coupons/policies/:id
+DELETE /api/store/coupons/policies/:id
+```
+
+호환 유지 사항:
+
+- 고객 쿠폰 목록/상세/통계 경로는 기존 Express 경로를 유지합니다.
+- 응답 필드는 `customerId`, `storeId`, `discountAmount`, `benefitItem`처럼 기존 camelCase를 유지합니다.
+- 기존 `POST /api/customer/coupons/:id/use`는 유지하되, 새 정책에 맞게 `storePin`이 필수입니다.
+
+동작 변경 사항:
+
+- `POST /api/customer/coupons/claim`은 더 이상 고객이 쿠폰 내용을 직접 입력해 생성하지 않습니다.
+- 고객은 `policyId`를 보내 `manual_claim`이고 `enabled = 1`인 정책 쿠폰만 발급받을 수 있습니다.
+- `payment_discount` 쿠폰은 발급/조회만 지원하며 실제 결제 적용/사용 처리는 결제 모듈 도입 전까지 보류합니다.
+- `store_benefit` 쿠폰은 고객 단독 사용 처리를 허용하지 않습니다.
+- 매장 혜택 쿠폰 사용은 `storePin` 검증 후에만 `used` 처리됩니다.
+- 체크인 자동 발급 서비스는 `customerId`가 있는 로그인 고객만 대상으로 합니다. 비회원 예약은 스킵합니다.
+
+요청 예시:
+
+```json
+POST /api/customer/coupons/claim
+{
+  "policyId": "coup_pol_..."
+}
+```
+
+```json
+POST /api/customer/coupons/:id/redeem
+{
+  "storePin": "1234"
+}
+```
+
+프론트 필요 작업:
+
+- 쿠폰 받기 UI는 `type`, `discountAmount` 등을 직접 보내지 말고 `policyId`만 보내야 합니다.
+- 매장 혜택 쿠폰 사용 화면에는 매장 직원이 입력할 4자리 PIN 입력 UI가 필요합니다.
+- 결제 할인 쿠폰은 결제 화면에서 선택 후보로 표시할 수 있지만, 실제 금액 차감은 결제 모듈 도입 후 연결해야 합니다.
+- 기존 `/use` 호출이 있다면 body에 `storePin`을 포함하거나 `/redeem`으로 전환해야 합니다.
