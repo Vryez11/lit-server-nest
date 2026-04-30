@@ -200,6 +200,15 @@ export class CreateCustomerReservationDto extends CreateReservationDto {
 }
 
 export class ListStoreReservationsQueryDto {
+  @ApiPropertyOptional({
+    description:
+      '기존 앱 호환용입니다. 인증 토큰의 storeId를 사용하므로 값은 무시됩니다.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  storeId?: string;
+
   @ApiPropertyOptional({ enum: reservations_status })
   @IsOptional()
   @IsEnum(reservations_status)
