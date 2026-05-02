@@ -17,9 +17,41 @@ import {
 } from 'class-validator';
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+const TIME_WITH_SECONDS_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/;
 
-const emptyToUndefined = ({ value }: { value: unknown }): unknown =>
-  value === '' || value === null ? undefined : value;
+const normalizeTimeValue = ({ value }: { value: unknown }): unknown => {
+  if (value === '' || value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(11, 16);
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed === '') {
+    return undefined;
+  }
+
+  if (TIME_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (TIME_WITH_SECONDS_PATTERN.test(trimmed)) {
+    return trimmed.slice(0, 5);
+  }
+
+  const date = new Date(trimmed);
+  if (!Number.isNaN(date.getTime())) {
+    return date.toISOString().slice(11, 16);
+  }
+
+  return trimmed;
+};
 
 export class StoreBasicInfoDto {
   @ApiPropertyOptional({ type: [String] })
@@ -39,13 +71,13 @@ export class StoreBasicInfoDto {
 export class StoreDayHoursDto {
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(normalizeTimeValue)
   @Matches(TIME_PATTERN, { message: 'openTime은 HH:mm 형식이어야 합니다.' })
   openTime?: string;
 
   @ApiPropertyOptional({ example: '22:00' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(normalizeTimeValue)
   @Matches(TIME_PATTERN, { message: 'closeTime은 HH:mm 형식이어야 합니다.' })
   closeTime?: string;
 
@@ -145,13 +177,13 @@ export class StoreOperationSettingsDto {
 
   @ApiPropertyOptional({ example: '09:00' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(normalizeTimeValue)
   @Matches(TIME_PATTERN, { message: 'openTime은 HH:mm 형식이어야 합니다.' })
   openTime?: string;
 
   @ApiPropertyOptional({ example: '22:00' })
   @IsOptional()
-  @Transform(emptyToUndefined)
+  @Transform(normalizeTimeValue)
   @Matches(TIME_PATTERN, { message: 'closeTime은 HH:mm 형식이어야 합니다.' })
   closeTime?: string;
 
