@@ -173,12 +173,27 @@ const toStringArray = (
 const toCategoryArray = (
   value: Prisma.JsonValue | null | undefined,
 ): Prisma.JsonArray => {
+  const categories: Prisma.JsonObject[] = [];
+  collectCategoryObjects(value, categories);
+  return categories;
+};
+
+const collectCategoryObjects = (
+  value: Prisma.JsonValue | null | undefined,
+  categories: Prisma.JsonObject[],
+): void => {
   if (!Array.isArray(value)) {
-    return [];
+    return;
   }
 
-  return value.filter(
-    (item): item is Prisma.JsonObject =>
-      item !== null && typeof item === 'object' && !Array.isArray(item),
-  );
+  for (const item of value) {
+    if (Array.isArray(item)) {
+      collectCategoryObjects(item, categories);
+      continue;
+    }
+
+    if (item !== null && typeof item === 'object') {
+      categories.push(item);
+    }
+  }
 };
