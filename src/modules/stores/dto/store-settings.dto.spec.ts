@@ -26,11 +26,15 @@ describe('UpdateStoreSettingsDto', () => {
           토: true,
           일: false,
         },
-        openTime: '09:00',
+        openTime: '1970-01-01T09:00:00.000Z',
         closeTime: '22:00',
         dailyHours: {
-          월: { openTime: '09:00', closeTime: '22:00', isOperating: true },
-          화: { openTime: '', closeTime: '22:00', isOperating: true },
+          월: {
+            openTime: '1970-01-01T09:00:00.000Z',
+            closeTime: '22:00:00',
+            isOperating: true,
+          },
+          화: { openTime: '09:00:00', closeTime: '22:00', isOperating: true },
           수: { openTime: null, closeTime: '22:00', isOperating: true },
           목: { openTime: '09:00', closeTime: '', isOperating: true },
           금: { openTime: '09:00', closeTime: null, isOperating: true },
