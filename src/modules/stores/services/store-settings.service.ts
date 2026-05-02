@@ -284,14 +284,29 @@ export class StoreSettingsService {
   }
 
   private normalizeCategories(value: unknown): Prisma.InputJsonArray {
+    const categories: Prisma.InputJsonObject[] = [];
+    this.collectCategoryObjects(value, categories);
+    return categories;
+  }
+
+  private collectCategoryObjects(
+    value: unknown,
+    categories: Prisma.InputJsonObject[],
+  ): void {
     if (!Array.isArray(value)) {
-      return [];
+      return;
     }
 
-    return value.filter(
-      (item): item is Prisma.InputJsonObject =>
-        item !== null && typeof item === 'object' && !Array.isArray(item),
-    );
+    for (const item of value) {
+      if (Array.isArray(item)) {
+        this.collectCategoryObjects(item, categories);
+        continue;
+      }
+
+      if (item !== null && typeof item === 'object') {
+        categories.push(item as Prisma.InputJsonObject);
+      }
+    }
   }
 
   private async upsertOperatingHours(
