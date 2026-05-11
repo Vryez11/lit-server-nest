@@ -94,6 +94,8 @@ prisma/
 | `EMAIL_VERIFICATION_CODE_LENGTH` | 선택 | 이메일 인증 코드 길이 |
 | `EMAIL_VERIFICATION_CODE_EXPIRES_IN` | 선택 | 이메일 인증 코드 만료 시간(초) |
 | `EMAIL_VERIFICATION_MAX_ATTEMPTS` | 선택 | 이메일 인증 최대 시도 횟수 |
+| `ADMIN_FEEDBACK_TOKEN` | 필수 | 피드백 어드민 API 접근 토큰. 최소 32자 |
+| `FEEDBACK_IP_HASH_SECRET` | 필수 | 피드백 작성자 IP 해시용 secret. 최소 32자 |
 
 예시:
 
@@ -106,6 +108,8 @@ JWT_REFRESH_TOKEN_SECRET="change-this-refresh-secret-to-at-least-32-characters"
 CORS_ORIGIN="http://localhost:3000"
 SWAGGER_ENABLED=true
 SWAGGER_PATH="docs"
+ADMIN_FEEDBACK_TOKEN="replace-this-with-32-plus-char-random-token"
+FEEDBACK_IP_HASH_SECRET="replace-this-with-32-plus-char-random-secret"
 ```
 
 ## 로컬 실행
@@ -240,6 +244,8 @@ GET /health
 | 쿠폰 정책 | `/api/store/coupons/policies` |
 | 고객 쿠폰 | `/api/customer/coupons` |
 | 비회원 쿠폰 | `/api/guest/coupons` |
+| 고객 피드백 | `/api/customer/feedbacks` |
+| 피드백 어드민 | `/api/admin/feedbacks` |
 
 ## API 응답 포맷
 
@@ -302,6 +308,7 @@ GET /health
 - `DATABASE_URL`이 올바른 운영 DB를 바라보는지 확인
 - `NODE_ENV=production` 설정 확인
 - `CORS_ORIGIN`이 실제 앱/웹 Origin과 일치하는지 확인
+- `ADMIN_FEEDBACK_TOKEN`, `FEEDBACK_IP_HASH_SECRET` 등록 확인
 - DB 스키마 변경 여부와 롤백 방법 확인
 - Swagger 공개 여부 확인
 
