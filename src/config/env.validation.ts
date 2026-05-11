@@ -41,4 +41,7 @@ export const envValidationSchema = Joi.object({
     .min(30)
     .default(180),
   EMAIL_VERIFICATION_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
+
+  ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).required(),
+  FEEDBACK_IP_HASH_SECRET: Joi.string().min(32).required(),
 });

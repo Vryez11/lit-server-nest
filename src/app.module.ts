@@ -7,6 +7,7 @@ import { CustomerAuthModule } from './modules/customer-auth/customer-auth.module
 import { CustomerStoresModule } from './modules/customer-stores/customer-stores.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { FeedbacksModule } from './modules/feedbacks/feedbacks.module';
 import { HealthModule } from './modules/health/health.module';
 import { ReservationsModule } from './modules/reservations/reservations.module';
 import { StoragesModule } from './modules/storages/storages.module';
@@ -33,6 +34,7 @@ import { StoresModule } from './modules/stores/stores.module';
     StoragesModule,
     ReservationsModule,
     DashboardModule,
+    FeedbacksModule,
   ],
 })
 export class AppModule {}
