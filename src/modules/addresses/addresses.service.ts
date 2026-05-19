@@ -20,16 +20,19 @@ export class AddressesService {
   private readonly logger = new Logger(AddressesService.name);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // VWorld API 인증키
-  //   - 검색 API 키:    env.VWORLD_SEARCH_API_KEY    (.env 또는 .env.local)
-  //   - 지오코더 API 키: env.VWORLD_GEOCODER_API_KEY (.env 또는 .env.local)
-  // 키 발급: https://www.vworld.kr → 오픈API → 인증키 발급
-  // 키 한도: 일 40,000건 (인증키 단위)
+  // VWorld API 인증키 (env.VWORLD_API_KEY)
+  //   - 인증키 하나로 검색·지오코더·역지오코더 등 모든 VWorld API 호출 가능
+  //   - 키 발급: https://www.vworld.kr → 오픈API → 인증키 발급
+  //   - 일 호출 한도: 40,000건/인증키 (개발용은 더 적음)
   // ─────────────────────────────────────────────────────────────────────────
   constructor(private readonly configService: ConfigService) {}
 
+  private get apiKey(): string {
+    return this.configService.getOrThrow<string>('VWORLD_API_KEY');
+  }
+
   async search(dto: AddressSearchQueryDto): Promise<AddressSearchResponseDto> {
-    const key = this.configService.getOrThrow<string>('VWORLD_SEARCH_API_KEY');
+    const key = this.apiKey;
     const size = dto.size ?? 10;
     const page = dto.page ?? 1;
 
@@ -105,9 +108,7 @@ export class AddressesService {
   async geocode(
     dto: AddressGeocodeQueryDto,
   ): Promise<AddressGeocodeResponseDto> {
-    const key = this.configService.getOrThrow<string>(
-      'VWORLD_GEOCODER_API_KEY',
-    );
+    const key = this.apiKey;
 
     const params = new URLSearchParams({
       service: 'address',
