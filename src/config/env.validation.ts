@@ -44,4 +44,8 @@ export const envValidationSchema = Joi.object({
 
   ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).required(),
   FEEDBACK_IP_HASH_SECRET: Joi.string().min(32).required(),
+
+  // VWorld 주소검색 API 인증키 (https://www.vworld.kr)
+  // 단일 인증키로 검색·지오코더 등 모든 VWorld API 호출 가능
+  VWORLD_API_KEY: Joi.string().required(),
 });

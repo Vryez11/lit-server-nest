@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './common/database/prisma.module';
 import { envValidationSchema } from './config/env.validation';
+import { AddressesModule } from './modules/addresses/addresses.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CustomerAuthModule } from './modules/customer-auth/customer-auth.module';
 import { CustomerStoresModule } from './modules/customer-stores/customer-stores.module';
@@ -25,6 +26,7 @@ import { StoresModule } from './modules/stores/stores.module';
       },
     }),
     PrismaModule,
+    AddressesModule,
     AuthModule,
     CustomerAuthModule,
     CustomerStoresModule,
