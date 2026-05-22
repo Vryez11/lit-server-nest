@@ -180,4 +180,44 @@ describe('GuestReservationService', () => {
       status: reservations_status.cancelled,
     });
   });
+
+  describe('calculateTotalAmount (progressive pricing)', () => {
+    // 누진 모델: 6,000원 × bagCount × (KST 일수 차이 + 1).
+    // 같은 KST 날짜 = 1일치 / 다음날 = 2일치 / N일 후 = (N+1)일치.
+
+    it('charges 1-day rate when pickup is on the same KST date', () => {
+      const { service } = createGuestReservationService();
+      // KST 2026-05-01 10:00 → 14:00 (같은 영업일, 같은 KST 날짜).
+      const start = new Date('2026-05-01T01:00:00.000Z');
+      const end = new Date('2026-05-01T05:00:00.000Z');
+      expect(service.calculateTotalAmount(start, end, 1)).toBe(6000);
+      expect(service.calculateTotalAmount(start, end, 3)).toBe(18000);
+    });
+
+    it('charges 2-day rate when pickup is on the next KST date', () => {
+      const { service } = createGuestReservationService();
+      // KST 2026-05-01 10:00 → 2026-05-02 10:00 (다음날).
+      const start = new Date('2026-05-01T01:00:00.000Z');
+      const end = new Date('2026-05-02T01:00:00.000Z');
+      expect(service.calculateTotalAmount(start, end, 1)).toBe(12000);
+      expect(service.calculateTotalAmount(start, end, 2)).toBe(24000);
+    });
+
+    it('charges (N+1)-day rate when pickup is N KST days later', () => {
+      const { service } = createGuestReservationService();
+      // KST 2026-05-01 → 2026-05-04 (3일 후) → (3+1)일치.
+      const start = new Date('2026-05-01T01:00:00.000Z');
+      const end = new Date('2026-05-04T01:00:00.000Z');
+      expect(service.calculateTotalAmount(start, end, 1)).toBe(24000);
+      expect(service.calculateTotalAmount(start, end, 2)).toBe(48000);
+    });
+
+    it('treats close-to-midnight pickup within same KST day as 1-day rate', () => {
+      const { service } = createGuestReservationService();
+      // 24시 마감 매장 케이스 — KST 23:59 픽업도 같은 날 → 6,000원.
+      const start = new Date('2026-05-01T01:00:00.000Z'); // KST 10:00
+      const end = new Date('2026-05-01T14:59:00.000Z'); // KST 23:59
+      expect(service.calculateTotalAmount(start, end, 1)).toBe(6000);
+    });
+  });
 });
