@@ -97,9 +97,9 @@ const toStorageSettings = (settings: StoreSettingsRecord) => ({
   isMediumEnabled: settings.l_enabled ?? true,
   isLargeEnabled: settings.xl_enabled ?? true,
   isSpecialEnabled: false,
-  refrigerationAvailable: false,
-  refrigerationHourlyFee: FROZEN_STORAGE_PRICES.m,
-  refrigerationDailyFee: FROZEN_STORAGE_PRICES.m,
+  refrigerationAvailable: settings.refrigeration_enabled ?? false,
+  refrigerationHourlyFee: FROZEN_STORAGE_PRICES.s,
+  refrigerationDailyFee: FROZEN_STORAGE_PRICES.s,
   refrigerationHourUnit: settings.refrigeration_hour_unit,
   refrigerationMaxCapacity: settings.refrigeration_max_capacity,
 });

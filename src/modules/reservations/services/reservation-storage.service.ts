@@ -5,7 +5,7 @@ import {
   storages_status,
 } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
-import { normalizeBillingStorageType } from '../pricing/reservation-pricing.constants';
+import { normalizeStorageAssignmentType } from '../pricing/reservation-pricing.constants';
 import { ACTIVE_RESERVATION_STATUSES } from '../reservation.constants';
 
 type TransactionClient = Prisma.TransactionClient;
@@ -23,7 +23,7 @@ export class ReservationStorageService {
       storageType: reservations_requested_storage_type;
     },
   ) {
-    const storageType = normalizeBillingStorageType(params.storageType);
+    const storageType = normalizeStorageAssignmentType(params.storageType);
     const storage = await tx.storages.findFirst({
       where: {
         store_id: params.storeId,

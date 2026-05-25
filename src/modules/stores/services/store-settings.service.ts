@@ -109,7 +109,6 @@ export class StoreSettingsService {
   ) {
     const storage = dto.storageSettings;
     const operation = dto.operationSettings;
-    const refrigeration = storage?.refrigeration;
     const totalSlots =
       storage !== undefined
         ? this.calculateTotalSlots(storage)
@@ -197,17 +196,18 @@ export class StoreSettingsService {
         existingSettings?.special_max_capacity ??
         0,
       special_enabled: false,
-      refrigeration_enabled: false,
-      refrigeration_hourly_rate: FROZEN_STORAGE_PRICES.m,
-      refrigeration_daily_rate: FROZEN_STORAGE_PRICES.m,
+      refrigeration_enabled:
+        this.toBoolean(storage?.refrigerationAvailable) ??
+        existingSettings?.refrigeration_enabled ??
+        false,
+      refrigeration_hourly_rate: FROZEN_STORAGE_PRICES.s,
+      refrigeration_daily_rate: FROZEN_STORAGE_PRICES.s,
       refrigeration_hour_unit:
         this.toNumber(storage?.refrigerationHourUnit) ??
-        this.toNumber(refrigeration?.hourUnit) ??
         existingSettings?.refrigeration_hour_unit ??
         1,
       refrigeration_max_capacity:
         this.toNumber(storage?.refrigerationMaxCapacity) ??
-        this.toNumber(refrigeration?.maxCapacity) ??
         existingSettings?.refrigeration_max_capacity ??
         3,
       new_reservation_notification:
@@ -370,6 +370,9 @@ export class StoreSettingsService {
         : 0) +
       (this.toBoolean(storage.isLargeEnabled)
         ? (this.toNumber(storage.large?.maxCapacity) ?? 0)
+        : 0) +
+      (this.toBoolean(storage.refrigerationAvailable)
+        ? (this.toNumber(storage.refrigerationMaxCapacity) ?? 0)
         : 0)
     );
   }
