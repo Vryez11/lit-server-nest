@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { ReservationStorageService } from './reservation-storage.service';
 import { GuestReservationService } from './guest-reservation.service';
+import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 
 const createGuestReservationService = () => {
   const tx = {
@@ -51,10 +52,13 @@ const createGuestReservationService = () => {
     prisma as never,
   );
 
+  const reservationPricingService = new ReservationPricingService();
+
   return {
     service: new GuestReservationService(
       prisma as never,
       reservationStorageService,
+      reservationPricingService,
     ),
     prisma,
     tx,
@@ -70,13 +74,13 @@ describe('GuestReservationService', () => {
       business_name: '테스트 매장',
     });
     prisma.store_settings.findUnique.mockResolvedValue({
-      s_max_capacity: 5,
+      m_max_capacity: 5,
     });
     prisma.reservations.aggregate.mockResolvedValue({
       _sum: { bag_count: 1 },
     });
     tx.store_settings.findUnique.mockResolvedValue({
-      s_max_capacity: 5,
+      m_max_capacity: 5,
     });
     tx.reservations.aggregate.mockResolvedValue({
       _sum: { bag_count: 1 },
@@ -98,7 +102,7 @@ describe('GuestReservationService', () => {
       end_time: new Date('2026-04-27T05:00:00.000Z'),
       duration: 4,
       bag_count: 2,
-      total_amount: 12000,
+      total_amount: 9000,
       message: null,
       requested_storage_type: reservations_requested_storage_type.s,
       payment_status: reservations_payment_status.paid,
@@ -131,7 +135,7 @@ describe('GuestReservationService', () => {
         store_id: 'store_1',
         customer_phone: '01012345678',
         customer_email: 'guest@example.com',
-        total_amount: 12000,
+        total_amount: 9000,
         payment_status: reservations_payment_status.paid,
         payment_id: 1n,
       }),
@@ -182,42 +186,74 @@ describe('GuestReservationService', () => {
   });
 
   describe('calculateTotalAmount (progressive pricing)', () => {
-    // 누진 모델: 6,000원 × bagCount × (KST 일수 차이 + 1).
-    // 같은 KST 날짜 = 1일치 / 다음날 = 2일치 / N일 후 = (N+1)일치.
+    const pricingService = new ReservationPricingService();
 
-    it('charges 1-day rate when pickup is on the same KST date', () => {
-      const { service } = createGuestReservationService();
-      // KST 2026-05-01 10:00 → 14:00 (같은 영업일, 같은 KST 날짜).
+    it('charges 1-day 소형 rate when pickup is on the same KST date', () => {
       const start = new Date('2026-05-01T01:00:00.000Z');
       const end = new Date('2026-05-01T05:00:00.000Z');
-      expect(service.calculateTotalAmount(start, end, 1)).toBe(6000);
-      expect(service.calculateTotalAmount(start, end, 3)).toBe(18000);
+      expect(
+        pricingService.calculateTotalAmount({
+          storageType: reservations_requested_storage_type.s,
+          bagCount: 1,
+          startTime: start,
+          endTime: end,
+        }),
+      ).toBe(4500);
+      expect(
+        pricingService.calculateTotalAmount({
+          storageType: reservations_requested_storage_type.s,
+          bagCount: 3,
+          startTime: start,
+          endTime: end,
+        }),
+      ).toBe(13500);
     });
 
     it('charges 2-day rate when pickup is on the next KST date', () => {
-      const { service } = createGuestReservationService();
-      // KST 2026-05-01 10:00 → 2026-05-02 10:00 (다음날).
       const start = new Date('2026-05-01T01:00:00.000Z');
       const end = new Date('2026-05-02T01:00:00.000Z');
-      expect(service.calculateTotalAmount(start, end, 1)).toBe(12000);
-      expect(service.calculateTotalAmount(start, end, 2)).toBe(24000);
+      expect(
+        pricingService.calculateTotalAmount({
+          storageType: reservations_requested_storage_type.s,
+          bagCount: 1,
+          startTime: start,
+          endTime: end,
+        }),
+      ).toBe(9000);
+      expect(
+        pricingService.calculateTotalAmount({
+          storageType: reservations_requested_storage_type.m,
+          bagCount: 1,
+          startTime: start,
+          endTime: end,
+        }),
+      ).toBe(12000);
     });
 
     it('charges (N+1)-day rate when pickup is N KST days later', () => {
-      const { service } = createGuestReservationService();
-      // KST 2026-05-01 → 2026-05-04 (3일 후) → (3+1)일치.
       const start = new Date('2026-05-01T01:00:00.000Z');
       const end = new Date('2026-05-04T01:00:00.000Z');
-      expect(service.calculateTotalAmount(start, end, 1)).toBe(24000);
-      expect(service.calculateTotalAmount(start, end, 2)).toBe(48000);
+      expect(
+        pricingService.calculateTotalAmount({
+          storageType: reservations_requested_storage_type.l,
+          bagCount: 1,
+          startTime: start,
+          endTime: end,
+        }),
+      ).toBe(32000);
     });
 
     it('treats close-to-midnight pickup within same KST day as 1-day rate', () => {
-      const { service } = createGuestReservationService();
-      // 24시 마감 매장 케이스 — KST 23:59 픽업도 같은 날 → 6,000원.
-      const start = new Date('2026-05-01T01:00:00.000Z'); // KST 10:00
-      const end = new Date('2026-05-01T14:59:00.000Z'); // KST 23:59
-      expect(service.calculateTotalAmount(start, end, 1)).toBe(6000);
+      const start = new Date('2026-05-01T01:00:00.000Z');
+      const end = new Date('2026-05-01T14:59:00.000Z');
+      expect(
+        pricingService.calculateTotalAmount({
+          storageType: reservations_requested_storage_type.s,
+          bagCount: 1,
+          startTime: start,
+          endTime: end,
+        }),
+      ).toBe(4500);
     });
   });
 });
