@@ -106,11 +106,7 @@ export class StoreStorageSyncService {
       where: {
         store_id: storeId,
         type: {
-          in: [
-            storages_type.xl,
-            storages_type.special,
-            storages_type.refrigeration,
-          ],
+          in: [storages_type.xl, storages_type.special],
         },
         status: storages_status.available,
       },
@@ -146,6 +142,14 @@ export class StoreStorageSyncService {
         storageSettings.large,
         FROZEN_STORAGE_PRICES.l,
       ),
+      {
+        type: storages_type.refrigeration,
+        prefix: 'RF',
+        enabled: this.toBoolean(storageSettings.refrigerationAvailable) ?? false,
+        capacity:
+          this.toNumber(storageSettings.refrigerationMaxCapacity) ?? 0,
+        pricing: FROZEN_STORAGE_PRICES.s,
+      },
     ];
   }
 

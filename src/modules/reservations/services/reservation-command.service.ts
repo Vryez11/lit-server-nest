@@ -24,7 +24,7 @@ import {
 } from '../dto/reservation.dto';
 import { toReservationResponse } from '../mappers/reservation.mapper';
 import {
-  normalizeBillingStorageType,
+  normalizeStorageAssignmentType,
 } from '../pricing/reservation-pricing.constants';
 import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationQueryService } from './reservation-query.service';
@@ -70,7 +70,7 @@ export class ReservationCommandService {
       });
     }
 
-    const storageType = normalizeBillingStorageType(dto.storageType);
+    const storageType = normalizeStorageAssignmentType(dto.storageType);
     const totalAmount = this.reservationPricingService.calculateTotalAmount({
       storageType,
       bagCount: dto.bagCount,
@@ -134,7 +134,7 @@ export class ReservationCommandService {
       });
     }
 
-    const storageType = normalizeBillingStorageType(dto.storageType);
+    const storageType = normalizeStorageAssignmentType(dto.storageType);
     const totalAmount = this.reservationPricingService.calculateTotalAmount({
       storageType,
       bagCount: dto.bagCount,

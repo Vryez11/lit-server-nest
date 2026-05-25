@@ -33,7 +33,7 @@ import {
   toGuestStoreName,
 } from '../mappers/guest-reservation.mapper';
 import {
-  normalizeBillingStorageType,
+  normalizeStorageAssignmentType,
 } from '../pricing/reservation-pricing.constants';
 import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationStorageService } from './reservation-storage.service';
@@ -71,7 +71,7 @@ export class GuestReservationService {
   async createReservation(
     dto: CreateGuestReservationDto,
   ): Promise<CreateGuestReservationResponseDto> {
-    const storageType = normalizeBillingStorageType(
+    const storageType = normalizeStorageAssignmentType(
       dto.storageType ??
         dto.requestedStorageType ??
         reservations_requested_storage_type.s,
@@ -484,7 +484,7 @@ export class GuestReservationService {
       return 5;
     }
 
-    const billingType = normalizeBillingStorageType(storageType);
+    const billingType = normalizeStorageAssignmentType(storageType);
     const capacityMap: Record<
       reservations_requested_storage_type,
       number | null | undefined
@@ -495,7 +495,7 @@ export class GuestReservationService {
       [reservations_requested_storage_type.xl]: settings.xl_max_capacity,
       [reservations_requested_storage_type.special]: settings.xl_max_capacity,
       [reservations_requested_storage_type.refrigeration]:
-        settings.l_max_capacity,
+        settings.refrigeration_max_capacity,
     };
 
     return capacityMap[billingType] ?? 5;

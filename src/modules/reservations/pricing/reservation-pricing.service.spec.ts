@@ -56,4 +56,15 @@ describe('ReservationPricingService', () => {
 
     expect(total).toBe(8000);
   });
+
+  it('charges 냉장 storage at 소형 price', () => {
+    const total = service.calculateTotalAmount({
+      storageType: reservations_requested_storage_type.refrigeration,
+      bagCount: 2,
+      startTime: new Date('2026-04-27T01:00:00.000Z'),
+      endTime: new Date('2026-04-27T05:00:00.000Z'),
+    });
+
+    expect(total).toBe(9000);
+  });
 });

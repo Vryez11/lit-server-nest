@@ -7,6 +7,9 @@ export const FROZEN_STORAGE_PRICES = {
   l: 8000,
 } as const;
 
+/** 냉장 보관도 소형과 동일 단가 */
+export const FROZEN_REFRIGERATION_PRICE = FROZEN_STORAGE_PRICES.s;
+
 export type BillingStorageType = keyof typeof FROZEN_STORAGE_PRICES;
 
 export const STORAGE_SIZE_LABELS: Record<BillingStorageType, string> = {
@@ -18,7 +21,7 @@ export const STORAGE_SIZE_LABELS: Record<BillingStorageType, string> = {
 /** 익일 누진 계산에 사용하는 KST 타임존 */
 export const STORAGE_BILLING_TIMEZONE = 'Asia/Seoul';
 
-const LEGACY_STORAGE_TYPE_ALIASES: Partial<
+const STORAGE_ASSIGNMENT_ALIASES: Partial<
   Record<
     reservations_requested_storage_type,
     reservations_requested_storage_type
@@ -28,14 +31,17 @@ const LEGACY_STORAGE_TYPE_ALIASES: Partial<
     reservations_requested_storage_type.l,
   [reservations_requested_storage_type.special]:
     reservations_requested_storage_type.l,
-  [reservations_requested_storage_type.refrigeration]:
-    reservations_requested_storage_type.m,
 };
+
+export const normalizeStorageAssignmentType = (
+  storageType: reservations_requested_storage_type,
+): reservations_requested_storage_type =>
+  STORAGE_ASSIGNMENT_ALIASES[storageType] ?? storageType;
 
 export const normalizeBillingStorageType = (
   storageType: reservations_requested_storage_type,
 ): BillingStorageType => {
-  const resolved = LEGACY_STORAGE_TYPE_ALIASES[storageType] ?? storageType;
+  const resolved = normalizeStorageAssignmentType(storageType);
 
   if (
     resolved === reservations_requested_storage_type.s ||
@@ -45,12 +51,24 @@ export const normalizeBillingStorageType = (
     return resolved;
   }
 
+  if (resolved === reservations_requested_storage_type.refrigeration) {
+    return reservations_requested_storage_type.s;
+  }
+
   return reservations_requested_storage_type.s;
 };
 
 export const getFrozenPricePerBagPerDay = (
   storageType: reservations_requested_storage_type,
 ): number => {
+  if (
+    storageType === reservations_requested_storage_type.refrigeration ||
+    normalizeStorageAssignmentType(storageType) ===
+      reservations_requested_storage_type.refrigeration
+  ) {
+    return FROZEN_REFRIGERATION_PRICE;
+  }
+
   const billingType = normalizeBillingStorageType(storageType);
   return FROZEN_STORAGE_PRICES[billingType];
 };
