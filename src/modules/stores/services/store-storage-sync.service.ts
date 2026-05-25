@@ -39,21 +39,27 @@ export class StoreStorageSyncService {
       );
 
       if (config.enabled && config.capacity > 0) {
+        const toCreate: Prisma.storagesCreateManyInput[] = [];
         for (let index = 1; index <= config.capacity; index += 1) {
           const number = this.storageNumber(config.prefix, index);
 
           if (!existingNumbers.has(number)) {
-            await tx.storages.create({
-              data: {
-                id: `stor_${randomUUID()}`,
-                store_id: storeId,
-                number,
-                type: config.type,
-                status: storages_status.available,
-                pricing: config.hourlyRate,
-              },
+            toCreate.push({
+              id: `stor_${randomUUID()}`,
+              store_id: storeId,
+              number,
+              type: config.type,
+              status: storages_status.available,
+              pricing: config.hourlyRate,
             });
           }
+        }
+
+        if (toCreate.length > 0) {
+          await tx.storages.createMany({
+            data: toCreate,
+            skipDuplicates: true,
+          });
         }
 
         await tx.storages.updateMany({
