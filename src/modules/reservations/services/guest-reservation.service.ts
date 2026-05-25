@@ -32,16 +32,15 @@ import {
   toGuestReservationResponse,
   toGuestStoreName,
 } from '../mappers/guest-reservation.mapper';
+import {
+  normalizeBillingStorageType,
+} from '../pricing/reservation-pricing.constants';
+import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationStorageService } from './reservation-storage.service';
 
 const ALLOWED_STORAGE_TYPES = Object.values(
   reservations_requested_storage_type,
 );
-// 누진 가격 모델: 1일당 6,000원 × bagCount × (KST 일수 차이 + 1).
-// 같은 KST 날짜 = 1일 / 다음날 = 2일 / 모레 = 3일 / ... 영업종료 안 픽업은 같은 KST 날짜에 자동 들어가 6,000원 단가.
-const DAILY_RATE_PER_BAG = 6000;
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const RESERVATION_TTL_MINUTES = 30;
 const GUEST_CANCEL_STATUSES: reservations_status[] = [
   reservations_status.pending,
@@ -66,15 +65,17 @@ export class GuestReservationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reservationStorageService: ReservationStorageService,
+    private readonly reservationPricingService: ReservationPricingService,
   ) {}
 
   async createReservation(
     dto: CreateGuestReservationDto,
   ): Promise<CreateGuestReservationResponseDto> {
-    const storageType =
+    const storageType = normalizeBillingStorageType(
       dto.storageType ??
-      dto.requestedStorageType ??
-      reservations_requested_storage_type.s;
+        dto.requestedStorageType ??
+        reservations_requested_storage_type.s,
+    );
     const email = dto.email ?? dto.customerEmail ?? null;
     const paymentKey = dto.paymentKey ?? dto.payment_key;
     const orderId = dto.orderId ?? dto.order_id;
@@ -113,11 +114,12 @@ export class GuestReservationService {
     const reservationId = `res_${randomUUID()}`;
     const customerId = `guest_${phoneNumber}_${Date.now()}`;
     const accessToken = this.generateAccessToken();
-    const totalAmount = this.calculateTotalAmount(
+    const totalAmount = this.reservationPricingService.calculateTotalAmount({
+      storageType,
+      bagCount: dto.bagCount,
       startTime,
       endTime,
-      dto.bagCount,
-    );
+    });
 
     await this.prisma.$transaction(async (tx) => {
       const latestCapacity = await this.checkCapacity(
@@ -415,35 +417,6 @@ export class GuestReservationService {
     return String(phone ?? '').replace(/[-\s]/g, '');
   }
 
-  /**
-   * 누진 가격 모델.
-   *   금액 = DAILY_RATE_PER_BAG × bagCount × (KST 일수 차이 + 1)
-   *   같은 KST 날짜 = 6,000 / 다음날 = 12,000 / 모레 = 18,000 / N일 후 = 6,000 × (N+1)
-   *
-   * 영업종료 안의 픽업은 같은 KST 날짜에 자동 들어가 6,000원 단가가 유지됨.
-   * 24시 마감(다음날 00:00)도 영업종료 시각이 같은 영업일에 속한다는 매장 정책 전제 — 정책 변경 시 별도 검토.
-   */
-  calculateTotalAmount(
-    startTime: Date,
-    endTime: Date,
-    bagCount: number,
-  ): number {
-    const dayDiff = this.kstDayDiff(startTime, endTime);
-    return DAILY_RATE_PER_BAG * bagCount * (dayDiff + 1);
-  }
-
-  /**
-   * KST 자정 기준 일수 차이. UTC 자정에 +9시간 오프셋을 더해 KST 자정 격자로 매핑.
-   * DST 없는 KST라 단순 산술로 충분.
-   */
-  private kstDayDiff(start: Date, end: Date): number {
-    const startKstDay = Math.floor(
-      (start.getTime() + KST_OFFSET_MS) / ONE_DAY_MS,
-    );
-    const endKstDay = Math.floor((end.getTime() + KST_OFFSET_MS) / ONE_DAY_MS);
-    return Math.max(0, endKstDay - startKstDay);
-  }
-
   private async resolveStore(idOrSlug: string) {
     const store = await this.prisma.stores.findFirst({
       where: {
@@ -511,21 +484,21 @@ export class GuestReservationService {
       return 5;
     }
 
+    const billingType = normalizeBillingStorageType(storageType);
     const capacityMap: Record<
       reservations_requested_storage_type,
       number | null | undefined
     > = {
-      [reservations_requested_storage_type.s]: settings.s_max_capacity,
-      [reservations_requested_storage_type.m]: settings.m_max_capacity,
-      [reservations_requested_storage_type.l]: settings.l_max_capacity,
+      [reservations_requested_storage_type.s]: settings.m_max_capacity,
+      [reservations_requested_storage_type.m]: settings.l_max_capacity,
+      [reservations_requested_storage_type.l]: settings.xl_max_capacity,
       [reservations_requested_storage_type.xl]: settings.xl_max_capacity,
-      [reservations_requested_storage_type.special]:
-        settings.special_max_capacity,
+      [reservations_requested_storage_type.special]: settings.xl_max_capacity,
       [reservations_requested_storage_type.refrigeration]:
-        settings.refrigeration_max_capacity,
+        settings.l_max_capacity,
     };
 
-    return capacityMap[storageType] ?? 5;
+    return capacityMap[billingType] ?? 5;
   }
 
   private async findVerifiedPaymentIfProvided(
