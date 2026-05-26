@@ -11,6 +11,11 @@ const createMockHost = (): {
   host: ArgumentsHost;
   response: MockResponse;
 } => {
+  const request = {
+    method: 'GET',
+    originalUrl: '/stores',
+    id: 'req_test',
+  };
   const response = {
     status: jest.fn<MockResponse, [number]>(),
     json: jest.fn<MockResponse, [ApiErrorResponse]>(),
@@ -21,6 +26,7 @@ const createMockHost = (): {
 
   const host = {
     switchToHttp: () => ({
+      getRequest: () => request,
       getResponse: () => response,
     }),
   } as ArgumentsHost;

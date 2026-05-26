@@ -105,6 +105,15 @@ export class ReservationCommandService {
       },
     });
 
+    this.logger.log({
+      event: 'reservation.created',
+      source: 'store',
+      reservationId: reservation.id,
+      storeId: reservation.store_id,
+      customerId: reservation.customer_id,
+      status: reservation.status,
+    });
+
     return toReservationResponse(reservation);
   }
 
@@ -169,6 +178,15 @@ export class ReservationCommandService {
       },
     });
 
+    this.logger.log({
+      event: 'reservation.created',
+      source: 'customer',
+      reservationId: reservation.id,
+      storeId: reservation.store_id,
+      customerId: reservation.customer_id,
+      status: reservation.status,
+    });
+
     return toReservationResponse(reservation);
   }
 
@@ -228,6 +246,15 @@ export class ReservationCommandService {
           confirmed_at: reservation.confirmed_at ?? new Date(),
           updated_at: new Date(),
         },
+      });
+
+      this.logger.log({
+        event: 'reservation.status_changed',
+        reservationId: reservation.id,
+        storeId,
+        previousStatus: reservation.status,
+        nextStatus: reservations_status.confirmed,
+        storageId: storage.id,
       });
 
       return {
@@ -308,6 +335,14 @@ export class ReservationCommandService {
         );
       }
 
+      this.logger.log({
+        event: 'reservation.status_changed',
+        reservationId: reservation.id,
+        storeId,
+        previousStatus: reservation.status,
+        nextStatus,
+      });
+
       return {
         id: reservation.id,
         status: nextStatus,
@@ -363,6 +398,12 @@ export class ReservationCommandService {
     });
 
     await this.issueCheckinCouponsSafely(result.couponIssueContext);
+
+    this.logger.log({
+      event: 'reservation.checkin_completed',
+      reservationId: result.id,
+      storeId,
+    });
 
     const { couponIssueContext, ...response } = result;
     void couponIssueContext;
@@ -456,12 +497,24 @@ export class ReservationCommandService {
         trigger: coupon_policies_auto_issue_on.checkin_completed,
         reservationId: context.reservationId,
       })
+      .then((couponIds) => {
+        if (couponIds.length > 0) {
+          this.logger.log({
+            event: 'coupon.auto_issue_completed',
+            reservationId: context.reservationId,
+            storeId: context.storeId,
+            issuedCount: couponIds.length,
+            couponIds,
+          });
+        }
+      })
       .catch((error: unknown) => {
-        this.logger.warn(
-          `checkin coupon auto issue failed: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }`,
-        );
+        this.logger.warn({
+          event: 'coupon.auto_issue_failed',
+          err: error,
+          reservationId: context.reservationId,
+          storeId: context.storeId,
+        });
       });
   }
 }

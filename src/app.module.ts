@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './common/database/prisma.module';
 import { envValidationSchema } from './config/env.validation';
+import { createLoggerParams } from './config/logger.config';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CustomerAuthModule } from './modules/customer-auth/customer-auth.module';
@@ -24,6 +26,11 @@ import { StoresModule } from './modules/stores/stores.module';
         abortEarly: false,
         allowUnknown: true,
       },
+    }),
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: createLoggerParams,
     }),
     PrismaModule,
     AddressesModule,

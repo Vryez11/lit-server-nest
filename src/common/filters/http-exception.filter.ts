@@ -6,7 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { ApiErrorBody, ApiErrorResponse } from '../responses/api-response.type';
 
 type HttpExceptionResponse = {
@@ -21,12 +21,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
+    const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
     const status = this.getHttpStatus(exception);
     const error = this.getErrorBody(exception, status);
 
     if (status >= 500) {
-      this.logger.error(error.message, exception);
+      this.logger.error({
+        event: 'http.exception',
+        err: exception,
+        statusCode: status,
+        errorCode: error.code,
+        method: request.method,
+        path: request.originalUrl ?? request.url,
+        requestId: request.id,
+        message: error.message,
+      });
     }
 
     const body: ApiErrorResponse = {

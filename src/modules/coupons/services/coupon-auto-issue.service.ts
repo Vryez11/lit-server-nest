@@ -54,11 +54,14 @@ export class CouponAutoIssueService {
         customerId,
         phoneSnapshot,
       }).catch((error: unknown) => {
-        this.logger.warn(
-          `coupon auto issue skipped: ${
-            error instanceof Error ? error.message : 'unknown error'
-          }`,
-        );
+        this.logger.warn({
+          event: 'coupon.auto_issue_policy_skipped',
+          err: error,
+          policyId: policy.id,
+          storeId: params.storeId,
+          trigger: params.trigger,
+          reservationId: params.reservationId,
+        });
         return null;
       });
 
@@ -135,6 +138,16 @@ export class CouponAutoIssueService {
         created_at: new Date(),
         updated_at: new Date(),
       },
+    });
+
+    this.logger.log({
+      event: 'coupon.issued',
+      couponId,
+      policyId: policy.id,
+      storeId,
+      customerType: isGuestCoupon ? 'guest' : 'customer',
+      trigger: params.trigger,
+      reservationId: params.reservationId,
     });
 
     return couponId;
