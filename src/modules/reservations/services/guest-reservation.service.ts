@@ -76,12 +76,8 @@ export class GuestReservationService {
         dto.requestedStorageType ??
         reservations_requested_storage_type.s,
     );
-    const email = dto.email ?? dto.customerEmail ?? null;
-    const paymentKey = dto.paymentKey ?? dto.payment_key;
-    const orderId = dto.orderId ?? dto.order_id;
-    const phoneNumber = this.normalizePhone(dto.phoneNumber);
-
-    this.assertValidPhone(phoneNumber);
+    const contact = this.resolveCreateContact(dto);
+    const { phoneNumber, email } = contact;
 
     const store = await this.resolveStore(dto.storeId);
     const startTime = new Date(dto.startTime);
@@ -114,6 +110,8 @@ export class GuestReservationService {
     const reservationId = `res_${randomUUID()}`;
     const customerId = `guest_${phoneNumber}_${Date.now()}`;
     const accessToken = this.generateAccessToken();
+    const paymentKey = dto.paymentKey ?? dto.payment_key;
+    const orderId = dto.orderId ?? dto.order_id;
     const totalAmount = this.reservationPricingService.calculateTotalAmount({
       storageType,
       bagCount: dto.bagCount,
@@ -216,22 +214,17 @@ export class GuestReservationService {
   async listReservations(
     query: ListGuestReservationsQueryDto,
   ): Promise<GuestReservationListResponseDto> {
-    const phoneNumber = this.normalizePhone(
-      query.phoneNumber ?? query.customer_phone,
-    );
-
-    if (!phoneNumber) {
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: '전화번호가 필요합니다.',
-        details: { required: ['phoneNumber'] },
-      });
-    }
-
-    this.assertValidPhone(phoneNumber);
+    const contact = this.resolveListContact(query);
 
     const reservations = await this.prisma.reservations.findMany({
-      where: { customer_phone: phoneNumber },
+      where: contact.email
+        ? {
+            OR: [
+              { customer_email: contact.email },
+              { customer_phone: contact.email },
+            ],
+          }
+        : { customer_phone: contact.phoneNumber },
       orderBy: { created_at: 'desc' },
       include: this.guestStoreInclude(),
     });
@@ -297,9 +290,7 @@ export class GuestReservationService {
     reservationId: string,
     dto: CancelGuestReservationDto,
   ): Promise<GuestReservationCancelResponseDto> {
-    const phoneNumber = this.normalizePhone(dto.phoneNumber);
-
-    this.assertValidPhone(phoneNumber);
+    const contact = this.resolveCancelContact(dto);
 
     return this.prisma.$transaction(async (tx) => {
       const reservation = await tx.reservations.findFirst({
@@ -310,7 +301,7 @@ export class GuestReservationService {
         throw this.reservationNotFound();
       }
 
-      if (this.normalizePhone(reservation.customer_phone) !== phoneNumber) {
+      if (!this.matchesGuestContact(reservation, contact)) {
         throw new ForbiddenException({
           code: 'FORBIDDEN',
           message: '본인 예약만 취소할 수 있습니다.',
@@ -415,6 +406,124 @@ export class GuestReservationService {
 
   normalizePhone(phone?: string | null): string {
     return String(phone ?? '').replace(/[-\s]/g, '');
+  }
+
+  private normalizeEmail(email?: string | null): string {
+    return String(email ?? '').trim().toLowerCase();
+  }
+
+  private isEmailAddress(value: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  }
+
+  private resolveCreateContact(dto: CreateGuestReservationDto): {
+    phoneNumber: string;
+    email: string | null;
+  } {
+    const rawPhone = String(dto.phoneNumber ?? '').trim();
+    const explicitEmail = this.normalizeEmail(
+      dto.email ?? dto.customerEmail ?? null,
+    );
+
+    if (this.isEmailAddress(rawPhone)) {
+      const email = explicitEmail || this.normalizeEmail(rawPhone);
+      this.assertValidEmail(email);
+      return { phoneNumber: email, email };
+    }
+
+    const phoneNumber = this.normalizePhone(rawPhone);
+    this.assertValidPhone(phoneNumber);
+    return { phoneNumber, email: explicitEmail || null };
+  }
+
+  private resolveListContact(query: ListGuestReservationsQueryDto): {
+    phoneNumber?: string;
+    email?: string;
+  } {
+    const email = this.normalizeEmail(query.email);
+    if (email) {
+      this.assertValidEmail(email);
+      return { email };
+    }
+
+    const phoneNumber = this.normalizePhone(
+      query.phoneNumber ?? query.customer_phone,
+    );
+    if (!phoneNumber) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '전화번호 또는 이메일이 필요합니다.',
+        details: { required: ['phoneNumber', 'email'] },
+      });
+    }
+
+    if (this.isEmailAddress(phoneNumber)) {
+      this.assertValidEmail(phoneNumber);
+      return { email: this.normalizeEmail(phoneNumber) };
+    }
+
+    this.assertValidPhone(phoneNumber);
+    return { phoneNumber };
+  }
+
+  private resolveCancelContact(dto: CancelGuestReservationDto): {
+    phoneNumber?: string;
+    email?: string;
+  } {
+    const email = this.normalizeEmail(dto.email);
+    if (email) {
+      this.assertValidEmail(email);
+      return { email };
+    }
+
+    const rawPhone = String(dto.phoneNumber ?? '').trim();
+    if (!rawPhone) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '전화번호 또는 이메일이 필요합니다.',
+        details: { required: ['phoneNumber', 'email'] },
+      });
+    }
+
+    if (this.isEmailAddress(rawPhone)) {
+      this.assertValidEmail(rawPhone);
+      return { email: this.normalizeEmail(rawPhone) };
+    }
+
+    const phoneNumber = this.normalizePhone(rawPhone);
+    this.assertValidPhone(phoneNumber);
+    return { phoneNumber };
+  }
+
+  private matchesGuestContact(
+    reservation: {
+      customer_phone: string | null;
+      customer_email: string | null;
+    },
+    contact: { phoneNumber?: string; email?: string },
+  ): boolean {
+    if (contact.email) {
+      const normalized = contact.email;
+      const reservationEmail = this.normalizeEmail(reservation.customer_email);
+      const reservationPhone = String(reservation.customer_phone ?? '').trim();
+      return (
+        reservationEmail === normalized ||
+        reservationPhone.toLowerCase() === normalized
+      );
+    }
+
+    return (
+      this.normalizePhone(reservation.customer_phone) === contact.phoneNumber
+    );
+  }
+
+  private assertValidEmail(email: string): void {
+    if (!this.isEmailAddress(email)) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '올바른 이메일을 입력해주세요.',
+      });
+    }
   }
 
   private async resolveStore(idOrSlug: string) {

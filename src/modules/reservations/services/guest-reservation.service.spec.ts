@@ -150,6 +150,147 @@ describe('GuestReservationService', () => {
     expect(result.reservation.accessToken).toBe('token');
   });
 
+  it('creates a guest reservation when phoneNumber is an email address', async () => {
+    const { service, prisma, tx } = createGuestReservationService();
+
+    prisma.stores.findFirst.mockResolvedValue({
+      id: 'store_1',
+      business_name: '테스트 매장',
+    });
+    prisma.store_settings.findUnique.mockResolvedValue({
+      m_max_capacity: 5,
+    });
+    prisma.reservations.aggregate.mockResolvedValue({
+      _sum: { bag_count: 0 },
+    });
+    tx.store_settings.findUnique.mockResolvedValue({
+      m_max_capacity: 5,
+    });
+    tx.reservations.aggregate.mockResolvedValue({
+      _sum: { bag_count: 0 },
+    });
+    prisma.reservations.findFirst.mockResolvedValue({
+      id: 'res_email',
+      store_id: 'store_1',
+      customer_name: 'Jane',
+      customer_phone: 'guest@example.com',
+      customer_email: 'guest@example.com',
+      status: reservations_status.pending,
+      start_time: new Date('2026-04-27T01:00:00.000Z'),
+      end_time: new Date('2026-04-27T05:00:00.000Z'),
+      duration: 4,
+      bag_count: 1,
+      total_amount: 4500,
+      message: null,
+      requested_storage_type: reservations_requested_storage_type.s,
+      payment_status: reservations_payment_status.pending,
+      qr_code: 'token',
+      created_at: new Date('2026-04-27T00:00:00.000Z'),
+      stores: {
+        business_name: '테스트 매장',
+        address: 'Seoul',
+        phone_number: '02-0000-0000',
+        latitude: null,
+        longitude: null,
+      },
+    });
+
+    await service.createReservation({
+      storeId: 'store_1',
+      customerName: 'Jane',
+      phoneNumber: 'guest@example.com',
+      email: 'guest@example.com',
+      startTime: '2026-04-27T10:00:00+09:00',
+      duration: 4,
+      bagCount: 1,
+      requestedStorageType: reservations_requested_storage_type.s,
+    });
+
+    expect(tx.reservations.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        customer_phone: 'guest@example.com',
+        customer_email: 'guest@example.com',
+      }),
+    });
+  });
+
+  it('lists guest reservations by email', async () => {
+    const { service, prisma } = createGuestReservationService();
+
+    prisma.reservations.findMany.mockResolvedValue([
+      {
+        id: 'res_email',
+        store_id: 'store_1',
+        customer_name: 'Jane',
+        customer_phone: 'guest@example.com',
+        customer_email: 'guest@example.com',
+        status: reservations_status.confirmed,
+        start_time: new Date('2026-04-27T01:00:00.000Z'),
+        end_time: new Date('2026-04-27T05:00:00.000Z'),
+        duration: 4,
+        bag_count: 1,
+        total_amount: 4500,
+        message: null,
+        requested_storage_type: reservations_requested_storage_type.s,
+        payment_status: reservations_payment_status.pending,
+        qr_code: 'token',
+        created_at: new Date('2026-04-27T00:00:00.000Z'),
+        stores: {
+          business_name: '테스트 매장',
+          address: 'Seoul',
+          phone_number: '02-0000-0000',
+          latitude: null,
+          longitude: null,
+        },
+      },
+    ]);
+
+    const result = await service.listReservations({
+      email: 'Guest@Example.com',
+    });
+
+    expect(prisma.reservations.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { customer_email: 'guest@example.com' },
+            { customer_phone: 'guest@example.com' },
+          ],
+        },
+      }),
+    );
+    expect(result.total).toBe(1);
+  });
+
+  it('cancels a guest reservation after email verification', async () => {
+    const { service, tx } = createGuestReservationService();
+    const future = new Date(Date.now() + 60 * 60 * 1000);
+
+    tx.reservations.findFirst.mockResolvedValue({
+      id: 'res_email',
+      customer_phone: 'guest@example.com',
+      customer_email: 'guest@example.com',
+      status: reservations_status.confirmed,
+      start_time: future,
+      storage_id: null,
+    });
+
+    const result = await service.cancelReservation('res_email', {
+      email: 'guest@example.com',
+    });
+
+    expect(tx.reservations.update).toHaveBeenCalledWith({
+      where: { id: 'res_email' },
+      data: expect.objectContaining({
+        status: reservations_status.cancelled,
+      }),
+    });
+    expect(result).toEqual({
+      id: 'res_email',
+      status: reservations_status.cancelled,
+    });
+  });
+
   it('cancels a guest reservation only after phone verification and releases storage', async () => {
     const { service, prisma, tx } = createGuestReservationService();
     const future = new Date(Date.now() + 60 * 60 * 1000);

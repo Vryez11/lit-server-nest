@@ -33,9 +33,12 @@ export class CreateGuestReservationDto {
   @MaxLength(255)
   customerName!: string;
 
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      '전화번호 또는 이메일(외국인 예약). 이메일만 사용 시 phoneNumber에도 동일 값을 넣습니다.',
+  })
   @IsString()
-  @MaxLength(30)
+  @MaxLength(255)
   phoneNumber!: string;
 
   @ApiPropertyOptional()
@@ -127,14 +130,23 @@ export class ListGuestReservationsQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(30)
+  @MaxLength(255)
   phoneNumber?: string;
 
   @ApiPropertyOptional({ description: '기존 호환 query 필드입니다.' })
   @IsOptional()
   @IsString()
-  @MaxLength(30)
+  @MaxLength(255)
   customer_phone?: string;
+
+  @ApiPropertyOptional({
+    description: '이메일로 예약 조회 (외국인 예약). phoneNumber와 둘 중 하나.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEmail()
+  @MaxLength(255)
+  email?: string;
 }
 
 export class GetGuestReservationQueryDto {
@@ -145,10 +157,22 @@ export class GetGuestReservationQueryDto {
 }
 
 export class CancelGuestReservationDto {
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: '전화번호 본인 확인. email과 둘 중 하나.',
+  })
+  @IsOptional()
   @IsString()
-  @MaxLength(30)
-  phoneNumber!: string;
+  @MaxLength(255)
+  phoneNumber?: string;
+
+  @ApiPropertyOptional({
+    description: '이메일 본인 확인. phoneNumber와 둘 중 하나.',
+  })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsEmail()
+  @MaxLength(255)
+  email?: string;
 }
 
 export class GuestAvailabilityQueryDto {
