@@ -87,6 +87,12 @@ export class ReservationResponseDto {
 
   @ApiPropertyOptional()
   createdAt?: Date | null;
+
+  @ApiPropertyOptional()
+  actualStartTime?: Date | null;
+
+  @ApiPropertyOptional()
+  actualEndTime?: Date | null;
 }
 
 export class ReservationListResponseDto {

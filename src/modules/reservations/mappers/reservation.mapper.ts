@@ -25,4 +25,6 @@ export const toReservationResponse = (
   paymentStatus: reservation.payment_status,
   paymentMethod: reservation.payment_method,
   createdAt: reservation.created_at,
+  actualStartTime: reservation.actual_start_time,
+  actualEndTime: reservation.actual_end_time,
 });
