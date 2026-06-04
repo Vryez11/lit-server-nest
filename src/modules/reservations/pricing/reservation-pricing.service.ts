@@ -22,16 +22,21 @@ export class ReservationPricingService {
   }
 
   countStorageDays(startTime: Date, endTime: Date): number {
-    const startDate = this.toKstDateKey(startTime);
-    const endDate = this.toKstDateKey(endTime);
+    const startDate = this.toBillingDateKey(startTime);
+    const endDate = this.toBillingDateKey(endTime);
     const startMs = this.toKstMidnightMs(startDate);
     const endMs = this.toKstMidnightMs(endDate);
 
     return Math.floor((endMs - startMs) / (24 * 60 * 60 * 1000)) + 1;
   }
 
-  private toKstDateKey(date: Date): string {
-    return date.toLocaleDateString('en-CA', {
+  // 과금 기준일 경계: 자정(00:00) 대신 오전 06:00 사용.
+  // 00:00~05:59 KST는 전날 영업일로 취급 — 심야 영업(01:00 마감 등)에서
+  // 자정을 넘겨도 같은 영업일 요금으로 계산됨.
+  private toBillingDateKey(date: Date): string {
+    const BILLING_DAY_OFFSET_MS = 6 * 60 * 60 * 1000; // 6시간
+    const shifted = new Date(date.getTime() - BILLING_DAY_OFFSET_MS);
+    return shifted.toLocaleDateString('en-CA', {
       timeZone: STORAGE_BILLING_TIMEZONE,
     });
   }
