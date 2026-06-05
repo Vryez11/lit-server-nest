@@ -16,14 +16,15 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import { RESERVATION_LOCALES } from '../reservation.constants';
 
 export class ReservationResponseDto {
   @ApiProperty()
@@ -44,7 +45,7 @@ export class ReservationResponseDto {
   @ApiPropertyOptional()
   email?: string | null;
 
-  @ApiPropertyOptional({ example: 'ko-KR' })
+  @ApiPropertyOptional({ example: 'ko' })
   locale?: string | null;
 
   @ApiProperty({ enum: reservations_status })
@@ -139,12 +140,12 @@ export class CreateReservationDto {
   @MaxLength(255)
   email?: string;
 
-  @ApiPropertyOptional({ default: 'ko-KR', example: 'ko-KR' })
+  @ApiPropertyOptional({ default: 'ko', enum: RESERVATION_LOCALES })
   @IsOptional()
   @Transform(emptyToUndefined)
   @IsString()
-  @MaxLength(20)
-  @Matches(/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/)
+  @MaxLength(5)
+  @IsIn(RESERVATION_LOCALES)
   locale?: string;
 
   @ApiProperty()

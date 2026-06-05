@@ -511,6 +511,7 @@ export class ReservationCommandService {
       end_time: Date | null;
       bag_count: number;
       total_amount: number;
+      locale: string | null;
       qr_code?: string | null;
     };
     storeName: string | null;
@@ -524,6 +525,7 @@ export class ReservationCommandService {
         reservationId: params.reservation.id,
         customerName: params.reservation.customer_name,
         storeName: params.storeName,
+        locale: params.reservation.locale,
         startTime: params.reservation.start_time,
         endTime: params.reservation.end_time,
         bagCount: params.reservation.bag_count,

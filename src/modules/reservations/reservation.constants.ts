@@ -1,13 +1,21 @@
 import { reservations_status } from '@prisma/client';
 
-export const DEFAULT_RESERVATION_LOCALE = 'ko-KR';
+export const RESERVATION_LOCALES = ['ko', 'en', 'ja', 'zh'] as const;
+
+export type ReservationLocale = (typeof RESERVATION_LOCALES)[number];
+
+export const DEFAULT_RESERVATION_LOCALE: ReservationLocale = 'ko';
 
 export const normalizeReservationLocale = (
   locale?: string | null,
-): string => {
+): ReservationLocale => {
   const normalized = String(locale ?? '').trim();
 
-  return normalized || DEFAULT_RESERVATION_LOCALE;
+  if (RESERVATION_LOCALES.includes(normalized as ReservationLocale)) {
+    return normalized as ReservationLocale;
+  }
+
+  return DEFAULT_RESERVATION_LOCALE;
 };
 
 export const ACTIVE_RESERVATION_STATUSES: reservations_status[] = [

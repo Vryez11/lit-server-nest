@@ -711,6 +711,7 @@ export class GuestReservationService {
         reservationId: reservation.id,
         customerName: reservation.customerName,
         storeName: reservation.storeName,
+        locale: reservation.locale,
         startTime: reservation.startTime,
         endTime: reservation.endTime,
         bagCount: reservation.bagCount,
