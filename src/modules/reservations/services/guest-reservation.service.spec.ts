@@ -53,21 +53,27 @@ const createGuestReservationService = () => {
   );
 
   const reservationPricingService = new ReservationPricingService();
+  const mailService = {
+    sendReservationCreatedEmail: jest.fn().mockResolvedValue(undefined),
+  };
 
   return {
     service: new GuestReservationService(
       prisma as never,
       reservationStorageService,
       reservationPricingService,
+      mailService as never,
     ),
     prisma,
     tx,
+    mailService,
   };
 };
 
 describe('GuestReservationService', () => {
   it('creates a guest reservation with normalized phone and payment link', async () => {
-    const { service, prisma, tx } = createGuestReservationService();
+    const { service, prisma, tx, mailService } =
+      createGuestReservationService();
 
     prisma.stores.findFirst.mockResolvedValue({
       id: 'store_1',
@@ -146,6 +152,15 @@ describe('GuestReservationService', () => {
         reservation_id: expect.stringMatching(/^res_/),
       }),
     });
+    expect(mailService.sendReservationCreatedEmail).toHaveBeenCalledWith(
+      'guest@example.com',
+      expect.objectContaining({
+        reservationId: 'res_1',
+        customerName: '홍길동',
+        storeName: '테스트 매장',
+        accessToken: 'token',
+      }),
+    );
     expect(result.storeName).toBe('테스트 매장');
     expect(result.reservation.accessToken).toBe('token');
   });
