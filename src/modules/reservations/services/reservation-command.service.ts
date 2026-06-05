@@ -15,7 +15,10 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { MailService } from '../../auth/services/mail.service';
 import { CouponAutoIssueService } from '../../coupons/services/coupon-auto-issue.service';
-import { RELEASE_STORAGE_STATUSES } from '../reservation.constants';
+import {
+  normalizeReservationLocale,
+  RELEASE_STORAGE_STATUSES,
+} from '../reservation.constants';
 import {
   CreateCustomerReservationDto,
   CreateReservationDto,
@@ -88,6 +91,7 @@ export class ReservationCommandService {
         customer_name: dto.customerName,
         customer_phone: dto.phoneNumber,
         customer_email: dto.email ?? null,
+        locale: normalizeReservationLocale(dto.locale),
         requested_storage_type: storageType,
         status: reservations_status.pending,
         start_time: startTime,
@@ -166,6 +170,7 @@ export class ReservationCommandService {
         customer_name: dto.customerName,
         customer_phone: dto.phoneNumber,
         customer_email: dto.email ?? null,
+        locale: normalizeReservationLocale(dto.locale),
         requested_storage_type: storageType,
         status: reservations_status.pending,
         start_time: startTime,
@@ -506,6 +511,7 @@ export class ReservationCommandService {
       end_time: Date | null;
       bag_count: number;
       total_amount: number;
+      locale: string | null;
       qr_code?: string | null;
     };
     storeName: string | null;
@@ -519,6 +525,7 @@ export class ReservationCommandService {
         reservationId: params.reservation.id,
         customerName: params.reservation.customer_name,
         storeName: params.storeName,
+        locale: params.reservation.locale,
         startTime: params.reservation.start_time,
         endTime: params.reservation.end_time,
         bagCount: params.reservation.bag_count,

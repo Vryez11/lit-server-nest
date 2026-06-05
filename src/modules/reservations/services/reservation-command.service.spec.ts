@@ -118,6 +118,7 @@ describe('ReservationCommandService', () => {
       customer_name: '홍길동',
       customer_phone: '01012345678',
       customer_email: 'guest@example.com',
+      locale: 'ja',
       status: reservations_status.pending,
       start_time: new Date('2026-04-27T01:00:00.000Z'),
       end_time: new Date('2026-04-27T05:00:00.000Z'),
@@ -148,6 +149,7 @@ describe('ReservationCommandService', () => {
       customerName: '홍길동',
       phoneNumber: '01012345678',
       email: 'guest@example.com',
+      locale: 'ja',
       startTime: '2026-04-27T10:00:00+09:00',
       duration: 4,
       bagCount: 2,
@@ -162,6 +164,12 @@ describe('ReservationCommandService', () => {
         storeName: '테스트 매장',
       }),
     );
+    expect(prisma.reservations.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        locale: 'ja',
+      }),
+    });
+    expect(result.locale).toBe('ja');
     expect(result.id).toBe('res_1');
   });
 

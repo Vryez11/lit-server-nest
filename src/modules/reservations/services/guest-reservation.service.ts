@@ -34,6 +34,7 @@ import {
   toGuestReservationResponse,
   toGuestStoreName,
 } from '../mappers/guest-reservation.mapper';
+import { normalizeReservationLocale } from '../reservation.constants';
 import {
   normalizeStorageAssignmentType,
 } from '../pricing/reservation-pricing.constants';
@@ -117,6 +118,7 @@ export class GuestReservationService {
     const accessToken = this.generateAccessToken();
     const paymentKey = dto.paymentKey ?? dto.payment_key;
     const orderId = dto.orderId ?? dto.order_id;
+    const locale = normalizeReservationLocale(dto.locale);
     const totalAmount = this.reservationPricingService.calculateTotalAmount({
       storageType,
       bagCount: dto.bagCount,
@@ -162,6 +164,7 @@ export class GuestReservationService {
           customer_name: dto.customerName,
           customer_phone: phoneNumber,
           customer_email: email,
+          locale,
           requested_storage_type: storageType,
           status: reservations_status.pending,
           start_time: startTime,
@@ -708,6 +711,7 @@ export class GuestReservationService {
         reservationId: reservation.id,
         customerName: reservation.customerName,
         storeName: reservation.storeName,
+        locale: reservation.locale,
         startTime: reservation.startTime,
         endTime: reservation.endTime,
         bagCount: reservation.bagCount,

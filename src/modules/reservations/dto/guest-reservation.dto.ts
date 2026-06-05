@@ -14,6 +14,7 @@ import {
   IsDateString,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -21,6 +22,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { RESERVATION_LOCALES } from '../reservation.constants';
 
 export class CreateGuestReservationDto {
   @ApiProperty()
@@ -56,6 +58,14 @@ export class CreateGuestReservationDto {
   @IsEmail()
   @MaxLength(255)
   customerEmail?: string;
+
+  @ApiPropertyOptional({ default: 'ko', enum: RESERVATION_LOCALES })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(5)
+  @IsIn(RESERVATION_LOCALES)
+  locale?: string;
 
   @ApiProperty()
   @Transform(optionalDateString)
@@ -227,6 +237,9 @@ export class GuestReservationResponseDto extends GuestReservationStoreInfoDto {
 
   @ApiPropertyOptional()
   email?: string | null;
+
+  @ApiPropertyOptional({ example: 'ko' })
+  locale?: string | null;
 
   @ApiProperty({ enum: reservations_status })
   status!: reservations_status | null;

@@ -103,6 +103,7 @@ describe('GuestReservationService', () => {
       customer_name: '홍길동',
       customer_phone: '01012345678',
       customer_email: 'guest@example.com',
+      locale: 'en',
       status: reservations_status.pending,
       start_time: new Date('2026-04-27T01:00:00.000Z'),
       end_time: new Date('2026-04-27T05:00:00.000Z'),
@@ -128,6 +129,7 @@ describe('GuestReservationService', () => {
       customerName: '홍길동',
       phoneNumber: '010-1234-5678',
       customerEmail: 'guest@example.com',
+      locale: 'en',
       startTime: '2026-04-27T10:00:00+09:00',
       duration: 4,
       bagCount: 2,
@@ -141,6 +143,7 @@ describe('GuestReservationService', () => {
         store_id: 'store_1',
         customer_phone: '01012345678',
         customer_email: 'guest@example.com',
+        locale: 'en',
         total_amount: 9000,
         payment_status: reservations_payment_status.paid,
         payment_id: 1n,
@@ -163,6 +166,7 @@ describe('GuestReservationService', () => {
     );
     expect(result.storeName).toBe('테스트 매장');
     expect(result.reservation.accessToken).toBe('token');
+    expect(result.reservation.locale).toBe('en');
   });
 
   it('creates a guest reservation when phoneNumber is an email address', async () => {
@@ -190,6 +194,7 @@ describe('GuestReservationService', () => {
       customer_name: 'Jane',
       customer_phone: 'guest@example.com',
       customer_email: 'guest@example.com',
+      locale: 'ko',
       status: reservations_status.pending,
       start_time: new Date('2026-04-27T01:00:00.000Z'),
       end_time: new Date('2026-04-27T05:00:00.000Z'),
@@ -225,6 +230,7 @@ describe('GuestReservationService', () => {
       data: expect.objectContaining({
         customer_phone: 'guest@example.com',
         customer_email: 'guest@example.com',
+        locale: 'ko',
       }),
     });
   });
@@ -239,6 +245,7 @@ describe('GuestReservationService', () => {
         customer_name: 'Jane',
         customer_phone: 'guest@example.com',
         customer_email: 'guest@example.com',
+        locale: 'ko',
         status: reservations_status.confirmed,
         start_time: new Date('2026-04-27T01:00:00.000Z'),
         end_time: new Date('2026-04-27T05:00:00.000Z'),

@@ -10,6 +10,7 @@ export const toReservationResponse = (
   customerName: reservation.customer_name,
   phoneNumber: reservation.customer_phone,
   email: reservation.customer_email,
+  locale: reservation.locale,
   status: reservation.status,
   startTime: reservation.start_time,
   endTime: reservation.end_time,
