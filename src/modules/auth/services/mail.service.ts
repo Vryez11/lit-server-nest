@@ -17,6 +17,7 @@ type ReservationCreatedMailContext = {
   endTime?: Date | null;
   bagCount: number;
   totalAmount: number;
+  accessToken?: string | null;
 };
 
 @Injectable()
@@ -46,6 +47,9 @@ export class MailService {
     const endTime = context.endTime
       ? this.formatKstDateTime(context.endTime)
       : '미정';
+    const accessTokenLine = context.accessToken
+      ? `\n예약 조회 토큰: ${context.accessToken}\n`
+      : '';
 
     await this.sendMail({
       to: email,
@@ -59,7 +63,7 @@ ${context.customerName}님, 예약이 접수되었습니다.
 보관 시작: ${startTime}
 보관 종료: ${endTime}
 수하물 수량: ${context.bagCount}개
-결제 금액: ${context.totalAmount.toLocaleString('ko-KR')}원
+결제 금액: ${context.totalAmount.toLocaleString('ko-KR')}원${accessTokenLine}
 예약 상태가 변경되면 추가로 안내드리겠습니다.
 
 - Lit`,

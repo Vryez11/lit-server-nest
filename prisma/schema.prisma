@@ -329,6 +329,7 @@ model reservations {
   customer_name                                  String                               @db.VarChar(255)
   customer_phone                                 String                               @db.VarChar(20)
   customer_email                                 String?                              @db.VarChar(255)
+  locale                                         String?                              @default("ko-KR") @db.VarChar(20)
   storage_id                                     String?                              @db.VarChar(255)
   storage_number                                 String?                              @db.VarChar(50)
   requested_storage_type                         reservations_requested_storage_type?

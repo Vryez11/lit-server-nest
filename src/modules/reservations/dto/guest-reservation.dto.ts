@@ -17,6 +17,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -56,6 +57,14 @@ export class CreateGuestReservationDto {
   @IsEmail()
   @MaxLength(255)
   customerEmail?: string;
+
+  @ApiPropertyOptional({ default: 'ko-KR', example: 'ko-KR' })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsString()
+  @MaxLength(20)
+  @Matches(/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/)
+  locale?: string;
 
   @ApiProperty()
   @Transform(optionalDateString)
@@ -227,6 +236,9 @@ export class GuestReservationResponseDto extends GuestReservationStoreInfoDto {
 
   @ApiPropertyOptional()
   email?: string | null;
+
+  @ApiPropertyOptional({ example: 'ko-KR' })
+  locale?: string | null;
 
   @ApiProperty({ enum: reservations_status })
   status!: reservations_status | null;
