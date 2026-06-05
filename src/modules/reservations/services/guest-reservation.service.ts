@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import {
 } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
+import { MailService } from '../../auth/services/mail.service';
 import {
   CancelGuestReservationDto,
   CleanupExpiredGuestReservationsResponseDto,
@@ -62,10 +64,13 @@ type CapacityResult = {
 
 @Injectable()
 export class GuestReservationService {
+  private readonly logger = new Logger(GuestReservationService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly reservationStorageService: ReservationStorageService,
     private readonly reservationPricingService: ReservationPricingService,
+    private readonly mailService: MailService,
   ) {}
 
   async createReservation(
@@ -204,6 +209,8 @@ export class GuestReservationService {
       reservationId,
       true,
     );
+
+    await this.sendReservationCreatedEmailSafely(reservation);
 
     return {
       reservation,
@@ -687,6 +694,35 @@ export class GuestReservationService {
 
   private generateAccessToken(): string {
     return randomBytes(16).toString('base64url');
+  }
+
+  private async sendReservationCreatedEmailSafely(
+    reservation: GuestReservationResponseDto,
+  ): Promise<void> {
+    if (!reservation.email) {
+      return;
+    }
+
+    await this.mailService
+      .sendReservationCreatedEmail(reservation.email, {
+        reservationId: reservation.id,
+        customerName: reservation.customerName,
+        storeName: reservation.storeName,
+        startTime: reservation.startTime,
+        endTime: reservation.endTime,
+        bagCount: reservation.bagCount,
+        totalAmount: reservation.totalAmount,
+        accessToken: reservation.accessToken,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn({
+          event: 'guest_reservation.email_failed',
+          err: error,
+          reservationId: reservation.id,
+          storeId: reservation.storeId,
+          email: reservation.email,
+        });
+      });
   }
 
   private addHours(date: Date, hours: number): Date {

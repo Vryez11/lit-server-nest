@@ -44,6 +44,9 @@ const createReservationCommandService = () => {
   };
 
   const reservationPricingService = new ReservationPricingService();
+  const mailService = {
+    sendReservationCreatedEmail: jest.fn().mockResolvedValue(undefined),
+  };
 
   return {
     service: new ReservationCommandService(
@@ -53,10 +56,12 @@ const createReservationCommandService = () => {
       reservationStorageService,
       couponAutoIssueService as never,
       reservationPricingService,
+      mailService as never,
     ),
     prisma,
     tx,
     couponAutoIssueService,
+    mailService,
   };
 };
 
@@ -102,6 +107,62 @@ describe('ReservationCommandService', () => {
       storageId: 'storage_1',
       storageNumber: 'S1',
     });
+  });
+
+  it('sends a reservation email after customer reservation creation', async () => {
+    const { service, prisma, mailService } = createReservationCommandService();
+    const createdReservation = {
+      id: 'res_1',
+      store_id: 'store_1',
+      customer_id: 'customer_1',
+      customer_name: '홍길동',
+      customer_phone: '01012345678',
+      customer_email: 'guest@example.com',
+      status: reservations_status.pending,
+      start_time: new Date('2026-04-27T01:00:00.000Z'),
+      end_time: new Date('2026-04-27T05:00:00.000Z'),
+      request_time: new Date('2026-04-27T00:00:00.000Z'),
+      duration: 4,
+      bag_count: 2,
+      total_amount: 9000,
+      message: null,
+      storage_id: null,
+      storage_number: null,
+      requested_storage_type: reservations_requested_storage_type.s,
+      special_requests: null,
+      payment_status: null,
+      payment_method: 'card',
+      created_at: new Date('2026-04-27T00:00:00.000Z'),
+      actual_start_time: null,
+      actual_end_time: null,
+    };
+
+    prisma.stores.findUnique.mockResolvedValue({
+      id: 'store_1',
+      business_name: '테스트 매장',
+    });
+    prisma.reservations.create.mockResolvedValue(createdReservation);
+
+    const result = await service.createCustomerReservation('customer_1', {
+      storeId: 'store_1',
+      customerName: '홍길동',
+      phoneNumber: '01012345678',
+      email: 'guest@example.com',
+      startTime: '2026-04-27T10:00:00+09:00',
+      duration: 4,
+      bagCount: 2,
+      storageType: reservations_requested_storage_type.s,
+    });
+
+    expect(mailService.sendReservationCreatedEmail).toHaveBeenCalledWith(
+      'guest@example.com',
+      expect.objectContaining({
+        reservationId: 'res_1',
+        customerName: '홍길동',
+        storeName: '테스트 매장',
+      }),
+    );
+    expect(result.id).toBe('res_1');
   });
 
   it('releases assigned storage when a reservation is cancelled', async () => {

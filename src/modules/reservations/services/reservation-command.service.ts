@@ -13,6 +13,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
+import { MailService } from '../../auth/services/mail.service';
 import { CouponAutoIssueService } from '../../coupons/services/coupon-auto-issue.service';
 import { RELEASE_STORAGE_STATUSES } from '../reservation.constants';
 import {
@@ -42,6 +43,7 @@ export class ReservationCommandService {
     private readonly reservationStorageService: ReservationStorageService,
     private readonly couponAutoIssueService: CouponAutoIssueService,
     private readonly reservationPricingService: ReservationPricingService,
+    private readonly mailService: MailService,
   ) {}
 
   async createStoreReservation(
@@ -114,6 +116,11 @@ export class ReservationCommandService {
       status: reservation.status,
     });
 
+    await this.sendReservationCreatedEmailSafely({
+      reservation,
+      storeName: null,
+    });
+
     return toReservationResponse(reservation);
   }
 
@@ -129,7 +136,7 @@ export class ReservationCommandService {
       });
     }
 
-    await this.assertStoreExists(dto.storeId);
+    const store = await this.assertStoreExists(dto.storeId);
 
     const startTime = new Date(dto.startTime);
     const endTime = dto.endTime
@@ -185,6 +192,11 @@ export class ReservationCommandService {
       storeId: reservation.store_id,
       customerId: reservation.customer_id,
       status: reservation.status,
+    });
+
+    await this.sendReservationCreatedEmailSafely({
+      reservation,
+      storeName: store.business_name,
     });
 
     return toReservationResponse(reservation);
@@ -466,10 +478,12 @@ export class ReservationCommandService {
     return [...current, ...newUrls];
   }
 
-  private async assertStoreExists(storeId: string): Promise<void> {
+  private async assertStoreExists(
+    storeId: string,
+  ): Promise<{ id: string; business_name: string }> {
     const store = await this.prisma.stores.findUnique({
       where: { id: storeId },
-      select: { id: true },
+      select: { id: true, business_name: true },
     });
 
     if (!store) {
@@ -478,6 +492,48 @@ export class ReservationCommandService {
         message: '점포를 찾을 수 없습니다.',
       });
     }
+
+    return store;
+  }
+
+  private async sendReservationCreatedEmailSafely(params: {
+    reservation: {
+      id: string;
+      customer_email: string | null;
+      customer_name: string;
+      store_id: string;
+      start_time: Date;
+      end_time: Date | null;
+      bag_count: number;
+      total_amount: number;
+      qr_code?: string | null;
+    };
+    storeName: string | null;
+  }): Promise<void> {
+    if (!params.reservation.customer_email) {
+      return;
+    }
+
+    await this.mailService
+      .sendReservationCreatedEmail(params.reservation.customer_email, {
+        reservationId: params.reservation.id,
+        customerName: params.reservation.customer_name,
+        storeName: params.storeName,
+        startTime: params.reservation.start_time,
+        endTime: params.reservation.end_time,
+        bagCount: params.reservation.bag_count,
+        totalAmount: params.reservation.total_amount,
+        accessToken: params.reservation.qr_code,
+      })
+      .catch((error: unknown) => {
+        this.logger.warn({
+          event: 'reservation.email_failed',
+          err: error,
+          reservationId: params.reservation.id,
+          storeId: params.reservation.store_id,
+          email: params.reservation.customer_email,
+        });
+      });
   }
 
   private async issueCheckinCouponsSafely(context: {

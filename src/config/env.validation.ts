@@ -33,7 +33,7 @@ export const envValidationSchema = Joi.object({
   EMAIL_SECURE: Joi.boolean().default(false),
   EMAIL_USER: Joi.string().allow('', null).optional(),
   EMAIL_PASSWORD: Joi.string().allow('', null).optional(),
-  EMAIL_FROM: Joi.string().default('Lit <noreply@lit.com>'),
+  EMAIL_FROM: Joi.string().default('Life is Travel <contact@lifeistravel.io>'),
   EMAIL_VERIFICATION_CODE_LENGTH: Joi.number()
     .integer()
     .min(4)

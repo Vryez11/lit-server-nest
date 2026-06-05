@@ -50,6 +50,7 @@ import { TokenService } from './services/token.service';
     StoreAuthGuard,
     CustomerAuthGuard,
     AuthThrottlerGuard,
+    MailService,
     TokenService,
     PasswordService,
   ],

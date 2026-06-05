@@ -90,7 +90,7 @@ prisma/
 | `EMAIL_SECURE` | 선택 | SMTP secure 사용 여부 |
 | `EMAIL_USER` | 선택 | SMTP 사용자 |
 | `EMAIL_PASSWORD` | 선택 | SMTP 비밀번호 |
-| `EMAIL_FROM` | 선택 | 발신자 표시값 |
+| `EMAIL_FROM` | 선택 | 발신자 표시값. 기본값은 `Life is Travel <contact@lifeistravel.io>` |
 | `EMAIL_VERIFICATION_CODE_LENGTH` | 선택 | 이메일 인증 코드 길이 |
 | `EMAIL_VERIFICATION_CODE_EXPIRES_IN` | 선택 | 이메일 인증 코드 만료 시간(초) |
 | `EMAIL_VERIFICATION_MAX_ATTEMPTS` | 선택 | 이메일 인증 최대 시도 횟수 |
