@@ -43,6 +43,9 @@ export class MailService {
     context: ReservationCreatedMailContext,
   ): Promise<void> {
     const storeName = context.storeName?.trim() || 'Lit 제휴 매장';
+    const displayReservationId = this.formatReservationDisplayId(
+      context.reservationId,
+    );
     const startTime = this.formatKstDateTime(context.startTime);
     const endTime = context.endTime
       ? this.formatKstDateTime(context.endTime)
@@ -58,7 +61,7 @@ export class MailService {
 
 ${context.customerName}님, 예약이 접수되었습니다.
 
-예약 번호: ${context.reservationId}
+예약 번호: ${displayReservationId}
 매장: ${storeName}
 보관 시작: ${startTime}
 보관 종료: ${endTime}
@@ -103,5 +106,9 @@ ${context.customerName}님, 예약이 접수되었습니다.
       dateStyle: 'medium',
       timeStyle: 'short',
     }).format(date);
+  }
+
+  private formatReservationDisplayId(reservationId: string): string {
+    return reservationId.slice(-6);
   }
 }
