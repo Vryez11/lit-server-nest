@@ -12,7 +12,7 @@ export const toCustomerStoreResponse = (
   slug: store.slug,
   businessName: store.business_name,
   description: store.description,
-  phoneNumber: store.store_phone_number ?? store.phone_number,
+  phoneNumber: store.store_phone_number ?? null,
   ownerPhone: store.notification_phone ?? store.phone_number,
   address: store.address,
   latitude: decimalToNumber(store.latitude),
