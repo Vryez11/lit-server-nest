@@ -32,6 +32,9 @@ export class StoreProfileResponseDto {
   @ApiPropertyOptional()
   storePhoneNumber?: string | null;
 
+  @ApiPropertyOptional()
+  notificationPhone?: string | null;
+
   @ApiProperty()
   wantsSmsNotification!: boolean;
 
@@ -98,6 +101,12 @@ export class UpdateStoreProfileDto {
   @IsString()
   @MaxLength(20)
   storePhoneNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  notificationPhone?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

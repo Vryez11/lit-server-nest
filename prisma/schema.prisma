@@ -634,6 +634,7 @@ model stores {
   store_pin_locked_until    DateTime?                  @db.DateTime(0)
   phone_number              String?                    @db.VarChar(20)
   store_phone_number        String?                    @db.VarChar(20)
+  notification_phone        String?                    @db.VarChar(20)
   wants_sms_notification    Boolean                    @default(false)
   business_type             stores_business_type?
   profile_image_url         String?                    @db.Text

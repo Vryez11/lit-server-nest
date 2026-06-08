@@ -9,6 +9,7 @@ export const toStoreProfileResponse = (
   businessName: store.business_name,
   phoneNumber: store.phone_number,
   storePhoneNumber: store.store_phone_number,
+  notificationPhone: store.notification_phone,
   wantsSmsNotification: store.wants_sms_notification,
   businessNumber: store.business_number,
   representativeName: store.representative_name,
