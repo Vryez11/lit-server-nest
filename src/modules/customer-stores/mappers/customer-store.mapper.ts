@@ -13,6 +13,7 @@ export const toCustomerStoreResponse = (
   businessName: store.business_name,
   description: store.description,
   phoneNumber: store.store_phone_number ?? store.phone_number,
+  ownerPhone: store.phone_number,
   address: store.address,
   latitude: decimalToNumber(store.latitude),
   longitude: decimalToNumber(store.longitude),

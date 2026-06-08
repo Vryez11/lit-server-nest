@@ -42,6 +42,9 @@ export class CustomerStoreResponseDto {
   phoneNumber!: string | null;
 
   @ApiPropertyOptional()
+  ownerPhone!: string | null;
+
+  @ApiPropertyOptional()
   address!: string | null;
 
   @ApiPropertyOptional()
