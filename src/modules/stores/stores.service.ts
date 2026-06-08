@@ -30,6 +30,7 @@ export class StoresService {
       businessName !== undefined ||
       dto.phoneNumber !== undefined ||
       dto.storePhoneNumber !== undefined ||
+      dto.notificationPhone !== undefined ||
       dto.wantsSmsNotification !== undefined ||
       dto.representativeName !== undefined ||
       dto.address !== undefined ||
@@ -61,6 +62,9 @@ export class StoresService {
           : {}),
         ...(dto.storePhoneNumber !== undefined
           ? { store_phone_number: dto.storePhoneNumber.trim() }
+          : {}),
+        ...(dto.notificationPhone !== undefined
+          ? { notification_phone: dto.notificationPhone.trim() }
           : {}),
         ...(dto.wantsSmsNotification !== undefined
           ? { wants_sms_notification: dto.wantsSmsNotification }

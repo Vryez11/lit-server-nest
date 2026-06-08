@@ -7,6 +7,7 @@ const CUSTOMER_STORE_BASE_SELECT = {
   description: true,
   phone_number: true,
   store_phone_number: true,
+  notification_phone: true,
   address: true,
   latitude: true,
   longitude: true,
