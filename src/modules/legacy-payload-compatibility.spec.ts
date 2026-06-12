@@ -72,6 +72,37 @@ describe('legacy payload compatibility', () => {
     expect(availabilityErrors).toHaveLength(0);
   });
 
+  it('accepts multi-type guest reservation items without legacy bagCount', async () => {
+    const basePayload = {
+      storeId: 'store_1',
+      customerName: '홍길동',
+      phoneNumber: '01012345678',
+      startTime: '2026-05-02T09:00:00.000Z',
+      duration: '4',
+    };
+
+    const itemsErrors = await validateDto(CreateGuestReservationDto, {
+      ...basePayload,
+      items: [
+        { storageType: 's', bagCount: '2' },
+        { storageType: 'l', bagCount: 1 },
+      ],
+    });
+
+    const missingBothErrors = await validateDto(CreateGuestReservationDto, {
+      ...basePayload,
+    });
+
+    const invalidItemErrors = await validateDto(CreateGuestReservationDto, {
+      ...basePayload,
+      items: [{ storageType: 'invalid', bagCount: '0' }],
+    });
+
+    expect(itemsErrors).toHaveLength(0);
+    expect(missingBothErrors).not.toHaveLength(0);
+    expect(invalidItemErrors).not.toHaveLength(0);
+  });
+
   it('accepts storage numeric strings', async () => {
     const errors = await validateDto(UpdateStorageDto, {
       number: 'S1',
@@ -145,4 +176,3 @@ describe('legacy payload compatibility', () => {
     expect(errors).toHaveLength(0);
   });
 });
-

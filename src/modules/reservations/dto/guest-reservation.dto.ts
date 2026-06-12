@@ -4,13 +4,16 @@ import {
   reservations_requested_storage_type,
   reservations_status,
 } from '@prisma/client';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   emptyToUndefined,
   optionalDateString,
   optionalNumber,
 } from '../../../common/transformers/legacy-input.transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -21,8 +24,23 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { RESERVATION_LOCALES } from '../reservation.constants';
+
+export class GuestReservationItemRequestDto {
+  @ApiProperty({ enum: reservations_requested_storage_type })
+  @IsEnum(reservations_requested_storage_type)
+  storageType!: reservations_requested_storage_type;
+
+  @ApiProperty()
+  @Transform(optionalNumber)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  bagCount!: number;
+}
 
 export class CreateGuestReservationDto {
   @ApiProperty()
@@ -85,17 +103,33 @@ export class CreateGuestReservationDto {
   @Max(24 * 30)
   duration!: number;
 
-  @ApiProperty()
+  @ApiPropertyOptional({
+    description: 'items 미제공 시 필수입니다 (단일 타입 호환 필드).',
+  })
+  @ValidateIf((o: CreateGuestReservationDto) => !o.items?.length)
   @Transform(optionalNumber)
   @IsInt()
   @Min(1)
   @Max(10)
-  bagCount!: number;
+  bagCount?: number;
 
   @ApiPropertyOptional({ enum: reservations_requested_storage_type })
   @IsOptional()
   @IsEnum(reservations_requested_storage_type)
   storageType?: reservations_requested_storage_type;
+
+  @ApiPropertyOptional({
+    type: [GuestReservationItemRequestDto],
+    description:
+      '멀티타입 예약 항목입니다. 제공 시 storageType/bagCount 단일 필드는 무시됩니다.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(6)
+  @ValidateNested({ each: true })
+  @Type(() => GuestReservationItemRequestDto)
+  items?: GuestReservationItemRequestDto[];
 
   @ApiPropertyOptional({
     enum: reservations_requested_storage_type,
@@ -222,6 +256,17 @@ export class GuestReservationStoreInfoDto {
   lng?: number | null;
 }
 
+export class GuestReservationItemDto {
+  @ApiProperty({ enum: reservations_requested_storage_type })
+  storageType!: reservations_requested_storage_type;
+
+  @ApiProperty()
+  bagCount!: number;
+
+  @ApiProperty()
+  amount!: number;
+}
+
 export class GuestReservationResponseDto extends GuestReservationStoreInfoDto {
   @ApiProperty()
   id!: string;
@@ -265,6 +310,15 @@ export class GuestReservationResponseDto extends GuestReservationStoreInfoDto {
   @ApiPropertyOptional({ enum: reservations_requested_storage_type })
   storageType?: reservations_requested_storage_type | null;
 
+  @ApiPropertyOptional({
+    description:
+      '같은 그룹(한 번에 생성된 멀티타입 예약)의 대표 예약 id입니다.',
+  })
+  groupId?: string | null;
+
+  @ApiProperty({ type: [GuestReservationItemDto] })
+  items!: GuestReservationItemDto[];
+
   @ApiPropertyOptional({ enum: reservations_payment_status })
   paymentStatus?: reservations_payment_status | null;
 
@@ -305,6 +359,12 @@ export class GuestReservationCancelResponseDto {
 
   @ApiProperty({ enum: reservations_status })
   status!: reservations_status;
+
+  @ApiPropertyOptional()
+  groupId?: string;
+
+  @ApiPropertyOptional({ description: '함께 취소된 예약 수입니다.' })
+  cancelledCount?: number;
 }
 
 export class GuestAvailabilityItemDto {

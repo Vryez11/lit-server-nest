@@ -350,6 +350,7 @@ model reservations {
   payment_method                                 String?                              @db.VarChar(50)
   payment_id                                     BigInt?                              @db.UnsignedBigInt
   qr_code                                        String?                              @db.Text
+  reservation_group_id                           String?                              @db.VarChar(255)
   created_at                                     DateTime?                            @default(now()) @db.Timestamp(0)
   updated_at                                     DateTime?                            @default(now()) @db.Timestamp(0)
   payments_payments_reservation_idToreservations payments[]                           @relation("payments_reservation_idToreservations")
@@ -363,6 +364,7 @@ model reservations {
   @@index([customer_id], map: "idx_customer")
   @@index([id, customer_phone], map: "idx_res_id_phone")
   @@index([customer_phone, created_at], map: "idx_res_phone_created")
+  @@index([reservation_group_id], map: "idx_reservation_group")
   @@index([store_id, start_time], map: "idx_store_date")
   @@index([store_id, status], map: "idx_store_status")
   @@index([storage_id], map: "storage_id")

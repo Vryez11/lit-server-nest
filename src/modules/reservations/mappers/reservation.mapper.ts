@@ -22,6 +22,7 @@ export const toReservationResponse = (
   storageId: reservation.storage_id,
   storageNumber: reservation.storage_number,
   storageType: reservation.requested_storage_type,
+  groupId: reservation.reservation_group_id,
   specialRequests: reservation.special_requests,
   paymentStatus: reservation.payment_status,
   paymentMethod: reservation.payment_method,

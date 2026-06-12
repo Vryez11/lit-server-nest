@@ -27,9 +27,7 @@ import {
   StoreCheckinDto,
 } from '../dto/reservation.dto';
 import { toReservationResponse } from '../mappers/reservation.mapper';
-import {
-  normalizeStorageAssignmentType,
-} from '../pricing/reservation-pricing.constants';
+import { normalizeStorageAssignmentType } from '../pricing/reservation-pricing.constants';
 import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationQueryService } from './reservation-query.service';
 import { ReservationStatusService } from './reservation-status.service';
@@ -83,9 +81,11 @@ export class ReservationCommandService {
       endTime,
     });
 
+    const reservationId = `res_${randomUUID()}`;
     const reservation = await this.prisma.reservations.create({
       data: {
-        id: `res_${randomUUID()}`,
+        id: reservationId,
+        reservation_group_id: reservationId,
         store_id: storeId,
         customer_id: dto.customerId ?? `cust_${Date.now()}`,
         customer_name: dto.customerName,
@@ -162,9 +162,11 @@ export class ReservationCommandService {
       endTime,
     });
 
+    const reservationId = `res_${randomUUID()}`;
     const reservation = await this.prisma.reservations.create({
       data: {
-        id: `res_${randomUUID()}`,
+        id: reservationId,
+        reservation_group_id: reservationId,
         store_id: dto.storeId,
         customer_id: customerId,
         customer_name: dto.customerName,
