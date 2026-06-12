@@ -31,13 +31,13 @@ import {
   ListGuestReservationsQueryDto,
 } from '../dto/guest-reservation.dto';
 import {
+  GuestReservationWithStore,
+  toGuestReservationGroupResponse,
   toGuestReservationResponse,
   toGuestStoreName,
 } from '../mappers/guest-reservation.mapper';
 import { normalizeReservationLocale } from '../reservation.constants';
-import {
-  normalizeStorageAssignmentType,
-} from '../pricing/reservation-pricing.constants';
+import { normalizeStorageAssignmentType } from '../pricing/reservation-pricing.constants';
 import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationStorageService } from './reservation-storage.service';
 
@@ -57,11 +57,19 @@ const CAPACITY_COUNT_STATUSES: reservations_status[] = [
   reservations_status.in_progress,
 ];
 
-type CapacityResult = {
-  available: boolean;
+type NormalizedReservationItem = {
+  storageType: reservations_requested_storage_type;
+  bagCount: number;
+};
+
+type CapacityFailure = {
+  storageType: reservations_requested_storage_type;
   maxCapacity: number;
   currentCount: number;
+  requested: number;
 };
+
+const MAX_BAG_COUNT_PER_TYPE = 10;
 
 @Injectable()
 export class GuestReservationService {
@@ -77,11 +85,7 @@ export class GuestReservationService {
   async createReservation(
     dto: CreateGuestReservationDto,
   ): Promise<CreateGuestReservationResponseDto> {
-    const storageType = normalizeStorageAssignmentType(
-      dto.storageType ??
-        dto.requestedStorageType ??
-        reservations_requested_storage_type.s,
-    );
+    const items = this.normalizeItems(dto);
     const contact = this.resolveCreateContact(dto);
     const { phoneNumber, email } = contact;
 
@@ -93,62 +97,45 @@ export class GuestReservationService {
 
     this.assertValidTimeRange(startTime, endTime);
 
-    const capacity = await this.checkCapacity({
-      storeId: store.id,
-      storageType,
-      startTime,
-      endTime,
-      bagCount: dto.bagCount,
-    });
+    this.assertCapacityAvailable(
+      await this.checkCapacityBatch({
+        storeId: store.id,
+        items,
+        startTime,
+        endTime,
+      }),
+    );
 
-    if (!capacity.available) {
-      throw new ConflictException({
-        code: 'CAPACITY_EXCEEDED',
-        message: '해당 시간대에 수용 가능한 공간이 부족합니다.',
-        details: {
-          maxCapacity: capacity.maxCapacity,
-          currentCount: capacity.currentCount,
-          requested: dto.bagCount,
-        },
-      });
-    }
-
-    const reservationId = `res_${randomUUID()}`;
+    // 그룹 식별자는 대표 예약 id를 그대로 사용합니다 (id === group_id 행이 대표).
+    const representativeId = `res_${randomUUID()}`;
+    const groupId = representativeId;
     const customerId = `guest_${phoneNumber}_${Date.now()}`;
     const accessToken = this.generateAccessToken();
     const paymentKey = dto.paymentKey ?? dto.payment_key;
     const orderId = dto.orderId ?? dto.order_id;
     const locale = normalizeReservationLocale(dto.locale);
-    const totalAmount = this.reservationPricingService.calculateTotalAmount({
-      storageType,
-      bagCount: dto.bagCount,
-      startTime,
-      endTime,
-    });
+    const now = new Date();
+    const amounts = items.map((item) =>
+      this.reservationPricingService.calculateTotalAmount({
+        storageType: item.storageType,
+        bagCount: item.bagCount,
+        startTime,
+        endTime,
+      }),
+    );
 
     await this.prisma.$transaction(async (tx) => {
-      const latestCapacity = await this.checkCapacity(
-        {
-          storeId: store.id,
-          storageType,
-          startTime,
-          endTime,
-          bagCount: dto.bagCount,
-        },
-        tx,
-      );
-
-      if (!latestCapacity.available) {
-        throw new ConflictException({
-          code: 'CAPACITY_EXCEEDED',
-          message: '해당 시간대에 수용 가능한 공간이 부족합니다.',
-          details: {
-            maxCapacity: latestCapacity.maxCapacity,
-            currentCount: latestCapacity.currentCount,
-            requested: dto.bagCount,
+      this.assertCapacityAvailable(
+        await this.checkCapacityBatch(
+          {
+            storeId: store.id,
+            items,
+            startTime,
+            endTime,
           },
-        });
-      }
+          tx,
+        ),
+      );
 
       const payment = await this.findVerifiedPaymentIfProvided(
         tx,
@@ -156,35 +143,37 @@ export class GuestReservationService {
         orderId,
       );
 
-      await tx.reservations.create({
-        data: {
-          id: reservationId,
+      await tx.reservations.createMany({
+        data: items.map((item, index) => ({
+          id: index === 0 ? representativeId : `res_${randomUUID()}`,
           store_id: store.id,
           customer_id: customerId,
           customer_name: dto.customerName,
           customer_phone: phoneNumber,
           customer_email: email,
           locale,
-          requested_storage_type: storageType,
+          requested_storage_type: item.storageType,
           status: reservations_status.pending,
           start_time: startTime,
           end_time: endTime,
-          request_time: new Date(),
+          request_time: now,
           duration: dto.duration,
-          bag_count: dto.bagCount,
-          total_amount: totalAmount,
+          bag_count: item.bagCount,
+          total_amount: amounts[index],
           message: dto.message ?? null,
           special_requests: null,
-          luggage_image_urls: Prisma.JsonNull,
+          // cleanup(TTL 만료 취소)이 그룹을 반쪽만 취소하지 않도록
+          // payment_status와 created_at은 그룹 전 행이 동일해야 합니다.
           payment_status: payment
             ? reservations_payment_status.paid
             : reservations_payment_status.pending,
           payment_method: 'card',
-          payment_id: payment?.id ?? null,
+          payment_id: index === 0 ? (payment?.id ?? null) : null,
           qr_code: accessToken,
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
+          reservation_group_id: groupId,
+          created_at: now,
+          updated_at: now,
+        })),
       });
 
       if (payment) {
@@ -194,7 +183,7 @@ export class GuestReservationService {
             reservation_id: null,
           },
           data: {
-            reservation_id: reservationId,
+            reservation_id: representativeId,
             updated_at: new Date(),
           },
         });
@@ -208,8 +197,8 @@ export class GuestReservationService {
       }
     });
 
-    const reservation = await this.getGuestReservationByIdOrThrow(
-      reservationId,
+    const reservation = await this.getGuestReservationGroupOrThrow(
+      groupId,
       true,
     );
 
@@ -219,6 +208,73 @@ export class GuestReservationService {
       reservation,
       storeName: toGuestStoreName(store),
     };
+  }
+
+  private normalizeItems(
+    dto: CreateGuestReservationDto,
+  ): NormalizedReservationItem[] {
+    if (!dto.items?.length) {
+      if (!dto.bagCount) {
+        throw new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: 'bagCount 또는 items가 필요합니다.',
+          details: { required: ['bagCount', 'items'] },
+        });
+      }
+
+      return [
+        {
+          storageType: normalizeStorageAssignmentType(
+            dto.storageType ??
+              dto.requestedStorageType ??
+              reservations_requested_storage_type.s,
+          ),
+          bagCount: dto.bagCount,
+        },
+      ];
+    }
+
+    // normalize(xl/special→l) 후 같은 타입은 합산 머지합니다. 입력 순서를 유지합니다.
+    const merged = new Map<reservations_requested_storage_type, number>();
+
+    for (const item of dto.items) {
+      const storageType = normalizeStorageAssignmentType(item.storageType);
+      merged.set(storageType, (merged.get(storageType) ?? 0) + item.bagCount);
+    }
+
+    for (const [storageType, bagCount] of merged) {
+      if (bagCount > MAX_BAG_COUNT_PER_TYPE) {
+        throw new BadRequestException({
+          code: 'VALIDATION_ERROR',
+          message: '타입별 가방 수는 최대 10개입니다.',
+          details: {
+            storageType,
+            merged: bagCount,
+            max: MAX_BAG_COUNT_PER_TYPE,
+          },
+        });
+      }
+    }
+
+    return [...merged].map(([storageType, bagCount]) => ({
+      storageType,
+      bagCount,
+    }));
+  }
+
+  private assertCapacityAvailable(failures: CapacityFailure[]): void {
+    if (failures.length) {
+      throw new ConflictException({
+        code: 'CAPACITY_EXCEEDED',
+        message: '해당 시간대에 수용 가능한 공간이 부족합니다.',
+        details: {
+          maxCapacity: failures[0].maxCapacity,
+          currentCount: failures[0].currentCount,
+          requested: failures[0].requested,
+          failures,
+        },
+      });
+    }
   }
 
   async listReservations(
@@ -239,14 +295,34 @@ export class GuestReservationService {
       include: this.guestStoreInclude(),
     });
 
-    const items = reservations.map((reservation) =>
-      toGuestReservationResponse(reservation),
+    const items = this.groupReservations(reservations).map((rows) =>
+      toGuestReservationGroupResponse(rows),
     );
 
     return {
       items,
       total: items.length,
     };
+  }
+
+  // created_at desc로 정렬된 행을 그룹 단위(레거시 NULL 행은 자기 자신 1건)로 묶습니다.
+  private groupReservations(
+    reservations: GuestReservationWithStore[],
+  ): GuestReservationWithStore[][] {
+    const groups = new Map<string, GuestReservationWithStore[]>();
+
+    for (const reservation of reservations) {
+      const key = reservation.reservation_group_id ?? reservation.id;
+      const group = groups.get(key);
+
+      if (group) {
+        group.push(reservation);
+      } else {
+        groups.set(key, [reservation]);
+      }
+    }
+
+    return [...groups.values()];
   }
 
   async getReservation(
@@ -272,7 +348,22 @@ export class GuestReservationService {
       throw this.reservationNotFound();
     }
 
-    return toGuestReservationResponse(reservation);
+    // 그룹 멤버 id 어떤 것으로 조회해도 그룹 전체를 머지해 응답합니다.
+    if (!reservation.reservation_group_id) {
+      return toGuestReservationResponse(reservation);
+    }
+
+    const groupRows = await this.prisma.reservations.findMany({
+      where: {
+        reservation_group_id: reservation.reservation_group_id,
+        qr_code: query.token,
+      },
+      include: this.guestStoreInclude(),
+    });
+
+    return toGuestReservationGroupResponse(
+      groupRows.length ? groupRows : [reservation],
+    );
   }
 
   async cleanupExpiredReservations(): Promise<CleanupExpiredGuestReservationsResponseDto> {
@@ -318,14 +409,32 @@ export class GuestReservationService {
         });
       }
 
-      if (
-        !reservation.status ||
-        !GUEST_CANCEL_STATUSES.includes(reservation.status)
-      ) {
+      // 부분 취소(부분 환불)는 지원하지 않으므로 그룹 전체를 한 번에 취소합니다.
+      const members = reservation.reservation_group_id
+        ? await tx.reservations.findMany({
+            where: {
+              reservation_group_id: reservation.reservation_group_id,
+            },
+          })
+        : [reservation];
+
+      const blockedItems = members.filter(
+        (member) =>
+          !member.status || !GUEST_CANCEL_STATUSES.includes(member.status),
+      );
+
+      if (blockedItems.length) {
         throw new ConflictException({
           code: 'NOT_CANCELLABLE',
           message: '현재 상태에서는 취소할 수 없습니다.',
-          details: { currentStatus: reservation.status },
+          details: {
+            currentStatus: reservation.status,
+            blockedItems: blockedItems.map((member) => ({
+              id: member.id,
+              storageType: member.requested_storage_type,
+              status: member.status,
+            })),
+          },
         });
       }
 
@@ -337,22 +446,30 @@ export class GuestReservationService {
         });
       }
 
-      await tx.reservations.update({
-        where: { id: reservation.id },
+      await tx.reservations.updateMany({
+        where: { id: { in: members.map((member) => member.id) } },
         data: {
           status: reservations_status.cancelled,
           updated_at: new Date(),
         },
       });
 
-      await this.reservationStorageService.releaseStorageIfAny(
-        tx,
-        reservation.storage_id,
-      );
+      for (const member of members) {
+        await this.reservationStorageService.releaseStorageIfAny(
+          tx,
+          member.storage_id,
+        );
+      }
+
+      const representative =
+        members.find((member) => member.id === member.reservation_group_id) ??
+        reservation;
 
       return {
-        id: reservation.id,
+        id: representative.id,
         status: reservations_status.cancelled,
+        groupId: reservation.reservation_group_id ?? reservation.id,
+        cancelledCount: members.length,
       };
     });
   }
@@ -419,7 +536,9 @@ export class GuestReservationService {
   }
 
   private normalizeEmail(email?: string | null): string {
-    return String(email ?? '').trim().toLowerCase();
+    return String(email ?? '')
+      .trim()
+      .toLowerCase();
   }
 
   private isEmailAddress(value: string): boolean {
@@ -557,24 +676,26 @@ export class GuestReservationService {
     return store;
   }
 
-  private async checkCapacity(
+  // 타입 수와 무관하게 settings 1회 + groupBy 1회로 전 타입을 한 번에 체크합니다.
+  private async checkCapacityBatch(
     params: {
       storeId: string;
-      storageType: reservations_requested_storage_type;
+      items: NormalizedReservationItem[];
       startTime: Date;
       endTime: Date;
-      bagCount: number;
     },
     client: PrismaService | Prisma.TransactionClient = this.prisma,
-  ): Promise<CapacityResult> {
-    const [settings, result] = await Promise.all([
+  ): Promise<CapacityFailure[]> {
+    const storageTypes = params.items.map((item) => item.storageType);
+    const [settings, aggregated] = await Promise.all([
       client.store_settings.findUnique({
         where: { store_id: params.storeId },
       }),
-      client.reservations.aggregate({
+      client.reservations.groupBy({
+        by: ['requested_storage_type'],
         where: {
           store_id: params.storeId,
-          requested_storage_type: params.storageType,
+          requested_storage_type: { in: storageTypes },
           status: { in: CAPACITY_COUNT_STATUSES },
           payment_status: { not: reservations_payment_status.refunded },
           start_time: { lt: params.endTime },
@@ -583,14 +704,31 @@ export class GuestReservationService {
         _sum: { bag_count: true },
       }),
     ]);
-    const maxCapacity = this.getMaxCapacity(settings, params.storageType);
-    const currentCount = result._sum.bag_count ?? 0;
+    const countByType = new Map<reservations_requested_storage_type, number>();
 
-    return {
-      available: currentCount + params.bagCount <= maxCapacity,
-      maxCapacity,
-      currentCount,
-    };
+    for (const row of aggregated) {
+      if (row.requested_storage_type) {
+        countByType.set(row.requested_storage_type, row._sum.bag_count ?? 0);
+      }
+    }
+
+    const failures: CapacityFailure[] = [];
+
+    for (const item of params.items) {
+      const maxCapacity = this.getMaxCapacity(settings, item.storageType);
+      const currentCount = countByType.get(item.storageType) ?? 0;
+
+      if (currentCount + item.bagCount > maxCapacity) {
+        failures.push({
+          storageType: item.storageType,
+          maxCapacity,
+          currentCount,
+          requested: item.bagCount,
+        });
+      }
+    }
+
+    return failures;
   }
 
   private getMaxCapacity(
@@ -665,20 +803,20 @@ export class GuestReservationService {
     return payment;
   }
 
-  private async getGuestReservationByIdOrThrow(
-    reservationId: string,
+  private async getGuestReservationGroupOrThrow(
+    groupId: string,
     includeAccessToken: boolean,
   ): Promise<GuestReservationResponseDto> {
-    const reservation = await this.prisma.reservations.findFirst({
-      where: { id: reservationId },
+    const rows = await this.prisma.reservations.findMany({
+      where: { reservation_group_id: groupId },
       include: this.guestStoreInclude(),
     });
 
-    if (!reservation) {
+    if (!rows.length) {
       throw this.reservationNotFound();
     }
 
-    return toGuestReservationResponse(reservation, { includeAccessToken });
+    return toGuestReservationGroupResponse(rows, { includeAccessToken });
   }
 
   private guestStoreInclude() {

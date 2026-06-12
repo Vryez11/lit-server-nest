@@ -81,6 +81,12 @@ export class ReservationResponseDto {
   @ApiPropertyOptional({ enum: reservations_requested_storage_type })
   storageType?: reservations_requested_storage_type | null;
 
+  @ApiPropertyOptional({
+    description:
+      '같은 그룹(한 번에 생성된 멀티타입 예약)의 대표 예약 id입니다.',
+  })
+  groupId?: string | null;
+
   @ApiPropertyOptional()
   specialRequests?: string | null;
 

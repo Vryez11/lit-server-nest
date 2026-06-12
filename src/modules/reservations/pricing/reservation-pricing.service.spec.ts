@@ -33,7 +33,7 @@ describe('ReservationPricingService', () => {
       storageType: reservations_requested_storage_type.s,
       bagCount: 1,
       startTime: new Date('2026-04-27T14:00:00.000Z'), // 23:00 KST
-      endTime: new Date('2026-04-27T16:00:00.000Z'),   // 01:00 KST 다음날
+      endTime: new Date('2026-04-27T16:00:00.000Z'), // 01:00 KST 다음날
     });
 
     expect(total).toBe(4500);
@@ -45,7 +45,7 @@ describe('ReservationPricingService', () => {
       storageType: reservations_requested_storage_type.s,
       bagCount: 1,
       startTime: new Date('2026-04-27T14:00:00.000Z'), // 23:00 KST
-      endTime: new Date('2026-04-27T22:00:00.000Z'),   // 07:00 KST 다음날
+      endTime: new Date('2026-04-27T22:00:00.000Z'), // 07:00 KST 다음날
     });
 
     expect(total).toBe(9000);
