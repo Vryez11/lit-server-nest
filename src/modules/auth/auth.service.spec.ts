@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 
 import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { stores } from '@prisma/client';
@@ -32,6 +32,7 @@ const createStore = (): stores => ({
   updated_at: new Date('2026-01-01T00:00:00.000Z'),
   last_login_at: null,
   login_count: 0,
+  login_locked_until: null,
 });
 
 const createAuthService = () => {
@@ -133,7 +134,10 @@ describe('AuthService', () => {
     );
     expect(prisma.stores.update).toHaveBeenCalledWith({
       where: { id: 'store_1' },
-      data: expect.objectContaining({ login_count: { increment: 1 } }),
+      data: expect.objectContaining({
+        login_count: 0,
+        login_locked_until: null,
+      }),
     });
     expect(result).toMatchObject({
       token: 'access-token',
@@ -148,7 +152,7 @@ describe('AuthService', () => {
     });
   });
 
-  it('rejects login when the password does not match', async () => {
+  it('increments the failure count on a wrong password without locking', async () => {
     const { service, prisma, passwordService } = createAuthService();
 
     prisma.stores.findUnique.mockResolvedValue(createStore());
@@ -159,7 +163,60 @@ describe('AuthService', () => {
         email: 'store@example.com',
         password: 'wrong-password',
       }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AUTHENTICATION_FAILED' }),
+    });
+    expect(prisma.stores.update).toHaveBeenCalledWith({
+      where: { id: 'store_1' },
+      data: expect.objectContaining({
+        login_count: 1,
+        login_locked_until: null,
+      }),
+    });
+  });
+
+  it('locks the account on the 5th consecutive failure', async () => {
+    const { service, prisma, passwordService } = createAuthService();
+
+    prisma.stores.findUnique.mockResolvedValue({
+      ...createStore(),
+      login_count: 4,
+    });
+    passwordService.compare.mockResolvedValue(false);
+
+    await expect(
+      service.login({
+        email: 'store@example.com',
+        password: 'wrong-password',
+      }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'ACCOUNT_LOCKED' }),
+    });
+
+    const updateArg = prisma.stores.update.mock.calls[0][0];
+    expect(updateArg.data.login_count).toBe(5);
+    expect(updateArg.data.login_locked_until).toBeInstanceOf(Date);
+  });
+
+  it('rejects login while the account is locked', async () => {
+    const { service, prisma, passwordService } = createAuthService();
+
+    prisma.stores.findUnique.mockResolvedValue({
+      ...createStore(),
+      login_count: 5,
+      login_locked_until: new Date(Date.now() + 5 * 60_000),
+    });
+
+    await expect(
+      service.login({
+        email: 'store@example.com',
+        password: 'password123',
+      }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'ACCOUNT_LOCKED' }),
+    });
+    // 잠금 중에는 비밀번호 검증조차 수행하지 않는다.
+    expect(passwordService.compare).not.toHaveBeenCalled();
     expect(prisma.stores.update).not.toHaveBeenCalled();
   });
 

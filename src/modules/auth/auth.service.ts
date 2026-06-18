@@ -41,6 +41,9 @@ type ChangePasswordResponse = {
   message: string;
 };
 
+const MAX_LOGIN_FAILURES = 5;
+const LOGIN_LOCK_MINUTES = 10;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -176,13 +179,40 @@ export class AuthService {
       throw this.authenticationFailed();
     }
 
+    // PIN 잠금과 동일 정책: 연속 실패 횟수(login_count)가 임계값에 도달하면
+    // login_locked_until까지 로그인을 거부하고, 성공 시 카운트를 초기화한다.
+    if (store.login_locked_until && store.login_locked_until > new Date()) {
+      throw this.accountLocked(store.login_locked_until);
+    }
+
     const passwordMatched = await this.passwordService.compare(
       dto.password,
       store.password_hash,
     );
 
     if (!passwordMatched) {
-      throw this.authenticationFailed();
+      const nextFailedCount = store.login_count + 1;
+      const shouldLock = nextFailedCount >= MAX_LOGIN_FAILURES;
+      const lockedUntil = shouldLock
+        ? this.addMinutes(new Date(), LOGIN_LOCK_MINUTES)
+        : null;
+
+      await this.prisma.stores.update({
+        where: { id: store.id },
+        data: {
+          login_count: nextFailedCount,
+          login_locked_until: lockedUntil,
+          updated_at: new Date(),
+        },
+      });
+
+      if (shouldLock) {
+        throw this.accountLocked(lockedUntil);
+      }
+
+      throw this.authenticationFailed(
+        Math.max(MAX_LOGIN_FAILURES - nextFailedCount, 0),
+      );
     }
 
     const accessToken = this.tokenService.generateAccessToken(
@@ -202,11 +232,14 @@ export class AuthService {
       },
     });
 
+    // 로그인 성공: 실패 카운트와 잠금을 초기화하고 마지막 로그인 시각을 갱신한다.
     await this.prisma.stores.update({
       where: { id: store.id },
       data: {
         last_login_at: new Date(),
-        login_count: { increment: 1 },
+        login_count: 0,
+        login_locked_until: null,
+        updated_at: new Date(),
       },
     });
 
@@ -436,10 +469,27 @@ export class AuthService {
     };
   }
 
-  private authenticationFailed(): UnauthorizedException {
+  private authenticationFailed(
+    remainingAttempts?: number,
+  ): UnauthorizedException {
     return new UnauthorizedException({
       code: 'AUTHENTICATION_FAILED',
       message: '이메일 또는 비밀번호가 일치하지 않습니다.',
+      ...(remainingAttempts !== undefined
+        ? { details: { remainingAttempts } }
+        : {}),
     });
+  }
+
+  private accountLocked(lockedUntil: Date | null): UnauthorizedException {
+    return new UnauthorizedException({
+      code: 'ACCOUNT_LOCKED',
+      message: '로그인이 잠겼습니다. 잠시 후 다시 시도해주세요.',
+      details: { lockedUntil },
+    });
+  }
+
+  private addMinutes(date: Date, minutes: number): Date {
+    return new Date(date.getTime() + minutes * 60_000);
   }
 }
