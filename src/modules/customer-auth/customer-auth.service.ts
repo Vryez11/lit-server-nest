@@ -411,6 +411,7 @@ export class CustomerAuthService {
         carrier: dto.carrier ?? customer.carrier,
         gender: dto.gender ?? customer.gender,
         last_login_at: now,
+        login_count: { increment: 1 },
         updated_at: now,
       },
     });
@@ -445,6 +446,7 @@ export class CustomerAuthService {
           location_agreed: this.toTinyInt(dto.locationAgreed),
           marketing_agreed: this.toTinyInt(dto.marketingAgreed),
           last_login_at: now,
+          login_count: 1,
           created_at: now,
           updated_at: now,
         },

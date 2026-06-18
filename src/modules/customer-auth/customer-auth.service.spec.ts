@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { customers } from '@prisma/client';
 import { CustomerAuthService } from './customer-auth.service';
@@ -20,6 +22,7 @@ const createCustomer = (overrides: Partial<customers> = {}): customers => ({
   last_login_at: new Date('2026-01-01T00:00:00.000Z'),
   created_at: new Date('2026-01-01T00:00:00.000Z'),
   updated_at: new Date('2026-01-01T00:00:00.000Z'),
+  login_count: 0,
   ...overrides,
 });
 
@@ -224,6 +227,46 @@ describe('CustomerAuthService', () => {
       customerId: 'customer_1',
       provider: 'kakao',
     });
+    expect(tx.customers.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ login_count: 1 }),
+    });
     expect(tx.customer_auth_providers.upsert).toHaveBeenCalled();
+  });
+
+  it('increments login_count for an existing social customer', async () => {
+    const { service, prisma, socialProviderService } = createService();
+    const customer = createCustomer({ login_count: 3 });
+    const tx = {
+      customers: {
+        findFirst: jest.fn().mockResolvedValue(customer),
+        update: jest.fn().mockResolvedValue(customer),
+      },
+      customer_auth_providers: {
+        upsert: jest.fn(),
+      },
+    };
+
+    socialProviderService.verifyAccessToken.mockResolvedValue({
+      providerId: 'kakao_1',
+      email: 'customer@example.com',
+      name: '홍길동',
+      profileImage: null,
+      rawProfile: { id: 1 },
+    });
+    prisma.$transaction.mockImplementation(
+      (callback: (transaction: typeof tx) => unknown) =>
+        Promise.resolve(callback(tx)),
+    );
+    prisma.customer_refresh_tokens.create.mockResolvedValue({});
+
+    await service.socialLogin({
+      provider: 'kakao',
+      accessToken: 'provider-access-token',
+    });
+
+    expect(tx.customers.update).toHaveBeenCalledWith({
+      where: { id: 'customer_1' },
+      data: expect.objectContaining({ login_count: { increment: 1 } }),
+    });
   });
 });

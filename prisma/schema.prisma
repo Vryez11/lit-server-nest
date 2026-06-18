@@ -143,6 +143,7 @@ model customers {
   last_login_at            DateTime?                  @db.DateTime(0)
   created_at               DateTime?                  @default(now()) @db.Timestamp(0)
   updated_at               DateTime?                  @default(now()) @db.Timestamp(0)
+  login_count              Int                        @default(0)
   customer_auth_providers  customer_auth_providers[]
   customer_devices         customer_devices[]
   customer_payment_methods customer_payment_methods[]
@@ -652,6 +653,8 @@ model stores {
   description               String?                    @db.Text
   created_at                DateTime?                  @default(now()) @db.Timestamp(0)
   updated_at                DateTime?                  @default(now()) @db.Timestamp(0)
+  last_login_at             DateTime?                  @db.DateTime(0)
+  login_count               Int                        @default(0)
   daily_statistics          daily_statistics[]
   notifications             notifications[]
   payments                  payments[]

@@ -14,6 +14,7 @@ const createStore = (): stores => ({
   store_pin_locked_until: null,
   phone_number: '01012345678',
   store_phone_number: '050700000000',
+  notification_phone: null,
   wants_sms_notification: true,
   business_type: 'RESTAURANT',
   profile_image_url: null,
@@ -29,6 +30,8 @@ const createStore = (): stores => ({
   description: '매장 소개',
   created_at: new Date('2026-01-01T00:00:00.000Z'),
   updated_at: new Date('2026-01-01T00:00:00.000Z'),
+  last_login_at: null,
+  login_count: 0,
 });
 
 const createStoresService = () => {
