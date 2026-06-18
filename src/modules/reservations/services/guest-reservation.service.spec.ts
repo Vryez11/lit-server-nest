@@ -20,7 +20,7 @@ const createGuestReservationService = () => {
       groupBy: jest.fn().mockResolvedValue([]),
       createMany: jest.fn(),
       findFirst: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
@@ -29,7 +29,9 @@ const createGuestReservationService = () => {
       updateMany: jest.fn(),
     },
     storages: {
+      findFirst: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
   };
   const prisma = {
@@ -927,6 +929,95 @@ describe('GuestReservationService', () => {
       }),
     });
     expect(tx.reservations.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('auto-approves the group on creation and assigns storage', async () => {
+    const { service, prisma, tx } = createGuestReservationService();
+
+    prisma.stores.findFirst.mockResolvedValue({
+      id: 'store_1',
+      business_name: '테스트 매장',
+    });
+    prisma.store_settings.findUnique.mockResolvedValue({ m_max_capacity: 5 });
+    tx.store_settings.findUnique.mockResolvedValue({ m_max_capacity: 5 });
+
+    const pendingRow = {
+      id: 'res_1',
+      store_id: 'store_1',
+      status: reservations_status.pending,
+      start_time: new Date('2026-04-27T01:00:00.000Z'),
+      end_time: new Date('2026-04-27T05:00:00.000Z'),
+      requested_storage_type: reservations_requested_storage_type.s,
+      confirmed_at: null,
+    };
+    // autoApproveGroup: 그룹의 pending 행을 조회한 뒤 보관함을 할당한다.
+    tx.reservations.findMany.mockResolvedValue([pendingRow]);
+    tx.storages.findFirst.mockResolvedValue({ id: 'storage_1', number: 'S1' });
+    // 응답용 그룹 조회는 prisma.reservations.findMany를 사용한다.
+    prisma.reservations.findMany.mockResolvedValue([
+      {
+        ...pendingRow,
+        customer_name: '홍길동',
+        customer_phone: '01012345678',
+        customer_email: null,
+        locale: 'ko',
+        duration: 4,
+        bag_count: 1,
+        total_amount: 4500,
+        message: null,
+        payment_status: reservations_payment_status.pending,
+        qr_code: 'token',
+        reservation_group_id: 'res_1',
+        created_at: new Date('2026-04-27T00:00:00.000Z'),
+        status: reservations_status.confirmed,
+        storage_id: 'storage_1',
+        storage_number: 'S1',
+        stores: guestStoreRow,
+      },
+    ]);
+
+    await service.createReservation({
+      storeId: 'store_1',
+      customerName: '홍길동',
+      phoneNumber: '010-1234-5678',
+      startTime: '2026-04-27T10:00:00+09:00',
+      duration: 4,
+      bagCount: 1,
+      requestedStorageType: reservations_requested_storage_type.s,
+    });
+
+    expect(tx.reservations.update).toHaveBeenCalledWith({
+      where: { id: 'res_1' },
+      data: expect.objectContaining({
+        status: reservations_status.confirmed,
+        storage_id: 'storage_1',
+        storage_number: 'S1',
+      }),
+    });
+  });
+
+  it('cleanup cancels expired unpaid reservations (incl. auto-approved) and releases storage', async () => {
+    const { service, tx } = createGuestReservationService();
+
+    tx.reservations.findMany.mockResolvedValue([
+      { id: 'res_1', storage_id: 'storage_1' },
+      { id: 'res_2', storage_id: null },
+    ]);
+    tx.reservations.updateMany.mockResolvedValue({ count: 2 });
+
+    const result = await service.cleanupExpiredReservations();
+
+    expect(tx.storages.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['storage_1'] } },
+      data: expect.objectContaining({ status: storages_status.available }),
+    });
+    expect(tx.reservations.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['res_1', 'res_2'] } },
+      data: expect.objectContaining({
+        status: reservations_status.cancelled,
+      }),
+    });
+    expect(result).toEqual({ cancelledCount: 2, ttlMinutes: 30 });
   });
 
   describe('calculateTotalAmount (progressive pricing)', () => {

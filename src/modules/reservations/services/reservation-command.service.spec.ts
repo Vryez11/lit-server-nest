@@ -24,6 +24,7 @@ const createReservationCommandService = () => {
   const prisma = {
     reservations: {
       create: jest.fn(),
+      findUnique: jest.fn(),
     },
     stores: {
       findUnique: jest.fn(),
@@ -110,7 +111,8 @@ describe('ReservationCommandService', () => {
   });
 
   it('sends a reservation email after customer reservation creation', async () => {
-    const { service, prisma, mailService } = createReservationCommandService();
+    const { service, prisma, tx, mailService } =
+      createReservationCommandService();
     const createdReservation = {
       id: 'res_1',
       store_id: 'store_1',
@@ -143,6 +145,15 @@ describe('ReservationCommandService', () => {
       business_name: '테스트 매장',
     });
     prisma.reservations.create.mockResolvedValue(createdReservation);
+    // 생성 직후 자동 승인 경로: 예약을 찾고 가용 보관함을 할당한다.
+    tx.reservations.findFirst.mockResolvedValue(createdReservation);
+    tx.storages.findFirst.mockResolvedValue({ id: 'storage_1', number: 'S1' });
+    prisma.reservations.findUnique.mockResolvedValue({
+      ...createdReservation,
+      status: reservations_status.confirmed,
+      storage_id: 'storage_1',
+      storage_number: 'S1',
+    });
 
     const result = await service.createCustomerReservation('customer_1', {
       storeId: 'store_1',
@@ -171,6 +182,116 @@ describe('ReservationCommandService', () => {
     });
     expect(result.locale).toBe('ja');
     expect(result.id).toBe('res_1');
+    // 생성 직후 자동 승인되어 confirmed 상태로 응답된다.
+    expect(result.status).toBe(reservations_status.confirmed);
+  });
+
+  it('auto-approves a store reservation on creation and returns confirmed', async () => {
+    const { service, prisma, tx } = createReservationCommandService();
+    const createdReservation = {
+      id: 'res_2',
+      store_id: 'store_1',
+      customer_id: 'cust_1',
+      customer_name: '홍길동',
+      customer_phone: '01012345678',
+      customer_email: null,
+      locale: 'ko',
+      status: reservations_status.pending,
+      start_time: new Date('2026-04-27T01:00:00.000Z'),
+      end_time: new Date('2026-04-27T05:00:00.000Z'),
+      request_time: new Date('2026-04-27T00:00:00.000Z'),
+      duration: 4,
+      bag_count: 1,
+      total_amount: 9000,
+      message: null,
+      storage_id: null,
+      storage_number: null,
+      requested_storage_type: reservations_requested_storage_type.s,
+      special_requests: null,
+      payment_status: null,
+      payment_method: 'card',
+      created_at: new Date('2026-04-27T00:00:00.000Z'),
+      actual_start_time: null,
+      actual_end_time: null,
+    };
+
+    prisma.reservations.create.mockResolvedValue(createdReservation);
+    tx.reservations.findFirst.mockResolvedValue(createdReservation);
+    tx.storages.findFirst.mockResolvedValue({ id: 'storage_9', number: 'S9' });
+    prisma.reservations.findUnique.mockResolvedValue({
+      ...createdReservation,
+      status: reservations_status.confirmed,
+      storage_id: 'storage_9',
+      storage_number: 'S9',
+    });
+
+    const result = await service.createStoreReservation('store_1', {
+      customerName: '홍길동',
+      phoneNumber: '01012345678',
+      startTime: '2026-04-27T10:00:00+09:00',
+      duration: 4,
+      bagCount: 1,
+      storageType: reservations_requested_storage_type.s,
+    });
+
+    expect(tx.reservations.update).toHaveBeenCalledWith({
+      where: { id: 'res_2' },
+      data: expect.objectContaining({
+        status: reservations_status.confirmed,
+        storage_id: 'storage_9',
+        storage_number: 'S9',
+      }),
+    });
+    expect(result.status).toBe(reservations_status.confirmed);
+    expect(result.storageNumber).toBe('S9');
+  });
+
+  it('keeps a reservation pending when no storage is available on creation', async () => {
+    const { service, prisma, tx } = createReservationCommandService();
+    const createdReservation = {
+      id: 'res_3',
+      store_id: 'store_1',
+      customer_id: 'cust_1',
+      customer_name: '홍길동',
+      customer_phone: '01012345678',
+      customer_email: null,
+      locale: 'ko',
+      status: reservations_status.pending,
+      start_time: new Date('2026-04-27T01:00:00.000Z'),
+      end_time: new Date('2026-04-27T05:00:00.000Z'),
+      request_time: new Date('2026-04-27T00:00:00.000Z'),
+      duration: 4,
+      bag_count: 1,
+      total_amount: 9000,
+      message: null,
+      storage_id: null,
+      storage_number: null,
+      requested_storage_type: reservations_requested_storage_type.s,
+      special_requests: null,
+      payment_status: null,
+      payment_method: 'card',
+      created_at: new Date('2026-04-27T00:00:00.000Z'),
+      actual_start_time: null,
+      actual_end_time: null,
+    };
+
+    prisma.reservations.create.mockResolvedValue(createdReservation);
+    tx.reservations.findFirst.mockResolvedValue(createdReservation);
+    // 가용 보관함 없음 → assignAvailableStorage가 NO_AVAILABLE_STORAGE를 던진다.
+    tx.storages.findFirst.mockResolvedValue(null);
+    prisma.reservations.findUnique.mockResolvedValue(createdReservation);
+
+    const result = await service.createStoreReservation('store_1', {
+      customerName: '홍길동',
+      phoneNumber: '01012345678',
+      startTime: '2026-04-27T10:00:00+09:00',
+      duration: 4,
+      bagCount: 1,
+      storageType: reservations_requested_storage_type.s,
+    });
+
+    expect(tx.reservations.update).not.toHaveBeenCalled();
+    expect(result.status).toBe(reservations_status.pending);
   });
 
   it('releases assigned storage when a reservation is cancelled', async () => {
