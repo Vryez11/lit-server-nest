@@ -32,6 +32,7 @@ const createStore = (): stores => ({
   updated_at: new Date('2026-01-01T00:00:00.000Z'),
   last_login_at: null,
   login_count: 0,
+  login_locked_until: null,
 });
 
 const createStoresService = () => {
