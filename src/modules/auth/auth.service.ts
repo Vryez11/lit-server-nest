@@ -202,6 +202,14 @@ export class AuthService {
       },
     });
 
+    await this.prisma.stores.update({
+      where: { id: store.id },
+      data: {
+        last_login_at: new Date(),
+        login_count: { increment: 1 },
+      },
+    });
+
     return this.createAuthResponse(store, accessToken, refreshToken);
   }
 

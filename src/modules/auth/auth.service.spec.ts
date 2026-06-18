@@ -30,6 +30,8 @@ const createStore = (): stores => ({
   description: '매장 소개',
   created_at: new Date('2026-01-01T00:00:00.000Z'),
   updated_at: new Date('2026-01-01T00:00:00.000Z'),
+  last_login_at: null,
+  login_count: 0,
 });
 
 const createAuthService = () => {
@@ -129,6 +131,10 @@ describe('AuthService', () => {
       'store_1',
       'store@example.com',
     );
+    expect(prisma.stores.update).toHaveBeenCalledWith({
+      where: { id: 'store_1' },
+      data: expect.objectContaining({ login_count: { increment: 1 } }),
+    });
     expect(result).toMatchObject({
       token: 'access-token',
       refreshToken: 'refresh-token',
@@ -154,6 +160,7 @@ describe('AuthService', () => {
         password: 'wrong-password',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(prisma.stores.update).not.toHaveBeenCalled();
   });
 
   it('changes the password and revokes existing refresh tokens', async () => {
