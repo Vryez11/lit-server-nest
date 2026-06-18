@@ -3,10 +3,12 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -14,10 +16,13 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthThrottlerGuard } from './guards/auth-throttler.guard';
+import { StoreAuthGuard } from './guards/store-auth.guard';
+import { CurrentStoreId } from './decorators/current-store.decorator';
 import {
   AuthTokenResponseDto,
   RefreshAccessTokenResponseDto,
 } from './dto/auth-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -77,5 +82,18 @@ export class AuthController {
   @ApiOkResponse({ type: RefreshAccessTokenResponseDto })
   refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
+  }
+
+  @Patch('password')
+  @UseGuards(StoreAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '매장 비밀번호를 변경합니다.' })
+  @ApiOkResponse()
+  changePassword(
+    @CurrentStoreId() storeId: string,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(storeId, dto);
   }
 }

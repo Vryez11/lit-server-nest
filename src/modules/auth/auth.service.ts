@@ -11,6 +11,7 @@ import {
   AuthTokenResponseDto,
   RefreshAccessTokenResponseDto,
 } from './dto/auth-response.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -33,6 +34,10 @@ type EmailVerifiedResponse = {
 };
 
 type LogoutResponse = {
+  message: string;
+};
+
+type ChangePasswordResponse = {
   message: string;
 };
 
@@ -198,6 +203,56 @@ export class AuthService {
     });
 
     return this.createAuthResponse(store, accessToken, refreshToken);
+  }
+
+  async changePassword(
+    storeId: string,
+    dto: ChangePasswordDto,
+  ): Promise<ChangePasswordResponse> {
+    const store = await this.prisma.stores.findUnique({
+      where: { id: storeId },
+      select: { id: true, password_hash: true },
+    });
+
+    if (!store) {
+      throw new NotFoundException({
+        code: 'STORE_NOT_FOUND',
+        message: '점포를 찾을 수 없습니다.',
+      });
+    }
+
+    const passwordMatched = await this.passwordService.compare(
+      dto.currentPassword,
+      store.password_hash,
+    );
+
+    if (!passwordMatched) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CURRENT_PASSWORD',
+        message: '현재 비밀번호가 일치하지 않습니다.',
+      });
+    }
+
+    const newPasswordHash = await this.passwordService.hash(dto.newPassword);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.stores.update({
+        where: { id: store.id },
+        data: {
+          password_hash: newPasswordHash,
+          updated_at: new Date(),
+        },
+      });
+
+      // 비밀번호 변경 시 기존 세션(refresh 토큰)을 모두 무효화한다.
+      await tx.refresh_tokens.deleteMany({
+        where: { store_id: store.id },
+      });
+    });
+
+    return {
+      message: '비밀번호가 변경되었습니다.',
+    };
   }
 
   async logout(dto: RefreshTokenDto): Promise<LogoutResponse> {

@@ -1,4 +1,6 @@
-import { UnauthorizedException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { stores } from '@prisma/client';
 import { AuthService } from './auth.service';
 
@@ -12,6 +14,7 @@ const createStore = (): stores => ({
   store_pin_locked_until: null,
   phone_number: '01012345678',
   store_phone_number: '050700000000',
+  notification_phone: null,
   wants_sms_notification: true,
   business_type: 'RESTAURANT',
   profile_image_url: null,
@@ -30,15 +33,27 @@ const createStore = (): stores => ({
 });
 
 const createAuthService = () => {
+  const tx = {
+    stores: {
+      update: jest.fn(),
+    },
+    refresh_tokens: {
+      deleteMany: jest.fn(),
+    },
+  };
   const prisma = {
     stores: {
       findUnique: jest.fn(),
+      update: jest.fn(),
     },
     refresh_tokens: {
       create: jest.fn(),
       deleteMany: jest.fn(),
       findFirst: jest.fn(),
     },
+    $transaction: jest.fn((callback: (client: typeof tx) => unknown) =>
+      callback(tx),
+    ),
   };
   const emailVerificationService = {
     generateCode: jest.fn(),
@@ -75,6 +90,7 @@ const createAuthService = () => {
   return {
     service,
     prisma,
+    tx,
     passwordService,
     tokenService,
   };
@@ -138,6 +154,66 @@ describe('AuthService', () => {
         password: 'wrong-password',
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('changes the password and revokes existing refresh tokens', async () => {
+    const { service, prisma, tx, passwordService } = createAuthService();
+
+    prisma.stores.findUnique.mockResolvedValue({
+      id: 'store_1',
+      password_hash: 'old-hash',
+    });
+    passwordService.compare.mockResolvedValue(true);
+    passwordService.hash.mockResolvedValue('new-hash');
+
+    const result = await service.changePassword('store_1', {
+      currentPassword: 'currentPassword123',
+      newPassword: 'newPassword123',
+    });
+
+    expect(passwordService.compare).toHaveBeenCalledWith(
+      'currentPassword123',
+      'old-hash',
+    );
+    expect(tx.stores.update).toHaveBeenCalledWith({
+      where: { id: 'store_1' },
+      data: expect.objectContaining({ password_hash: 'new-hash' }),
+    });
+    expect(tx.refresh_tokens.deleteMany).toHaveBeenCalledWith({
+      where: { store_id: 'store_1' },
+    });
+    expect(result).toEqual({ message: '비밀번호가 변경되었습니다.' });
+  });
+
+  it('rejects password change when the current password does not match', async () => {
+    const { service, prisma, tx, passwordService } = createAuthService();
+
+    prisma.stores.findUnique.mockResolvedValue({
+      id: 'store_1',
+      password_hash: 'old-hash',
+    });
+    passwordService.compare.mockResolvedValue(false);
+
+    await expect(
+      service.changePassword('store_1', {
+        currentPassword: 'wrong-password',
+        newPassword: 'newPassword123',
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(tx.stores.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects password change when the store does not exist', async () => {
+    const { service, prisma } = createAuthService();
+
+    prisma.stores.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.changePassword('store_unknown', {
+        currentPassword: 'currentPassword123',
+        newPassword: 'newPassword123',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('refreshes an access token when the refresh token is valid', async () => {
