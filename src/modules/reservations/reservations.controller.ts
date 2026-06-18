@@ -28,6 +28,8 @@ import {
   StoreCheckinDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto';
+import { QrCheckinDto, QrCheckinResponseDto, QrCheckoutDto, QrCheckoutResponseDto } from './dto/qr-checkin.dto';
+import { QrCheckinService } from './services/qr-checkin.service';
 import { ReservationCommandService } from './services/reservation-command.service';
 import { ReservationQueryService } from './services/reservation-query.service';
 
@@ -39,6 +41,7 @@ export class ReservationsController {
   constructor(
     private readonly reservationQueryService: ReservationQueryService,
     private readonly reservationCommandService: ReservationCommandService,
+    private readonly qrCheckinService: QrCheckinService,
   ) {}
 
   @Post()
@@ -129,5 +132,27 @@ export class ReservationsController {
     @Body() dto: StoreCheckinDto,
   ) {
     return this.reservationCommandService.storeCheckin(storeId, id, dto);
+  }
+
+  @Post('checkin-by-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'QR 코드 토큰으로 체크인합니다.' })
+  @ApiOkResponse({ type: QrCheckinResponseDto })
+  checkinByToken(
+    @CurrentStoreId() storeId: string,
+    @Body() dto: QrCheckinDto,
+  ) {
+    return this.qrCheckinService.checkinByToken(storeId, dto);
+  }
+
+  @Post('checkout-by-token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'QR 코드 토큰으로 체크아웃합니다.' })
+  @ApiOkResponse({ type: QrCheckoutResponseDto })
+  checkoutByToken(
+    @CurrentStoreId() storeId: string,
+    @Body() dto: QrCheckoutDto,
+  ) {
+    return this.qrCheckinService.checkoutByToken(storeId, dto);
   }
 }
