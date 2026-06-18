@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -120,12 +121,16 @@ export class ReservationCommandService {
       status: reservation.status,
     });
 
+    await this.autoApproveAfterCreate(storeId, reservation.id);
+    const finalReservation =
+      await this.reloadReservationOrFallback(reservation);
+
     await this.sendReservationCreatedEmailSafely({
-      reservation,
+      reservation: finalReservation,
       storeName: null,
     });
 
-    return toReservationResponse(reservation);
+    return toReservationResponse(finalReservation);
   }
 
   async createCustomerReservation(
@@ -201,12 +206,16 @@ export class ReservationCommandService {
       status: reservation.status,
     });
 
+    await this.autoApproveAfterCreate(dto.storeId, reservation.id);
+    const finalReservation =
+      await this.reloadReservationOrFallback(reservation);
+
     await this.sendReservationCreatedEmailSafely({
-      reservation,
+      reservation: finalReservation,
       storeName: store.business_name,
     });
 
-    return toReservationResponse(reservation);
+    return toReservationResponse(finalReservation);
   }
 
   async approveReservation(
@@ -283,6 +292,44 @@ export class ReservationCommandService {
         storageNumber: storage.number,
       };
     });
+  }
+
+  // 예약 생성 직후 자동 승인한다. 가용 보관함이 없으면(NO_AVAILABLE_STORAGE)
+  // 예약을 pending으로 남기고 생성 흐름을 막지 않는다.
+  private async autoApproveAfterCreate(
+    storeId: string,
+    reservationId: string,
+  ): Promise<void> {
+    try {
+      await this.approveReservation(storeId, reservationId);
+    } catch (error) {
+      if (
+        error instanceof ConflictException &&
+        (error.getResponse() as { code?: string })?.code ===
+          'NO_AVAILABLE_STORAGE'
+      ) {
+        this.logger.warn({
+          event: 'reservation.auto_approve_skipped',
+          reason: 'NO_AVAILABLE_STORAGE',
+          reservationId,
+          storeId,
+        });
+        return;
+      }
+
+      throw error;
+    }
+  }
+
+  // 자동 승인으로 status/보관함이 바뀌었을 수 있으므로 최신 행을 다시 읽어 응답한다.
+  private async reloadReservationOrFallback<T extends { id: string }>(
+    fallback: T,
+  ): Promise<T> {
+    const latest = await this.prisma.reservations.findUnique({
+      where: { id: fallback.id },
+    });
+
+    return (latest as T | null) ?? fallback;
   }
 
   async rejectReservation(

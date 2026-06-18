@@ -13,6 +13,7 @@ import {
   reservations_payment_status,
   reservations_requested_storage_type,
   reservations_status,
+  storages_status,
 } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
@@ -197,6 +198,8 @@ export class GuestReservationService {
       }
     });
 
+    await this.autoApproveGroup(groupId);
+
     const reservation = await this.getGuestReservationGroupOrThrow(
       groupId,
       true,
@@ -208,6 +211,62 @@ export class GuestReservationService {
       reservation,
       storeName: toGuestStoreName(store),
     };
+  }
+
+  // 생성된 그룹의 각 pending 행을 자동 승인한다. 타입별 가용 보관함이 없으면
+  // 해당 행만 pending으로 남기고(NO_AVAILABLE_STORAGE) 나머지는 계속 승인한다.
+  private async autoApproveGroup(groupId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.reservations.findMany({
+        where: {
+          reservation_group_id: groupId,
+          status: reservations_status.pending,
+        },
+      });
+
+      for (const row of rows) {
+        if (!row.requested_storage_type) {
+          continue;
+        }
+
+        try {
+          const storage =
+            await this.reservationStorageService.assignAvailableStorage(tx, {
+              storeId: row.store_id,
+              startTime: row.start_time,
+              endTime: row.end_time,
+              storageType: row.requested_storage_type,
+            });
+
+          await tx.reservations.update({
+            where: { id: row.id },
+            data: {
+              status: reservations_status.confirmed,
+              storage_id: storage.id,
+              storage_number: storage.number,
+              confirmed_at: row.confirmed_at ?? new Date(),
+              updated_at: new Date(),
+            },
+          });
+        } catch (error) {
+          if (
+            error instanceof ConflictException &&
+            (error.getResponse() as { code?: string })?.code ===
+              'NO_AVAILABLE_STORAGE'
+          ) {
+            this.logger.warn({
+              event: 'guest_reservation.auto_approve_skipped',
+              reason: 'NO_AVAILABLE_STORAGE',
+              reservationId: row.id,
+              storeId: row.store_id,
+            });
+            continue;
+          }
+
+          throw error;
+        }
+      }
+    });
   }
 
   private normalizeItems(
@@ -368,23 +427,60 @@ export class GuestReservationService {
 
   async cleanupExpiredReservations(): Promise<CleanupExpiredGuestReservationsResponseDto> {
     const cutoff = new Date(Date.now() - RESERVATION_TTL_MINUTES * 60 * 1000);
-    const result = await this.prisma.reservations.updateMany({
-      where: {
-        status: reservations_status.pending,
-        payment_status: reservations_payment_status.pending,
-        customer_id: { startsWith: 'guest_' },
-        created_at: { lt: cutoff },
-      },
-      data: {
-        status: reservations_status.cancelled,
-        updated_at: new Date(),
-      },
-    });
 
-    return {
-      cancelledCount: result.count,
-      ttlMinutes: RESERVATION_TTL_MINUTES,
-    };
+    return this.prisma.$transaction(async (tx) => {
+      // 자동 승인(confirmed)된 미결제 예약도 TTL 대상이다. 보관함을 점유 중일 수
+      // 있으므로 취소 전에 점유 보관함을 모아 반납한다.
+      const expiring = await tx.reservations.findMany({
+        where: {
+          status: {
+            in: [reservations_status.pending, reservations_status.confirmed],
+          },
+          payment_status: reservations_payment_status.pending,
+          customer_id: { startsWith: 'guest_' },
+          created_at: { lt: cutoff },
+        },
+        select: { id: true, storage_id: true },
+      });
+
+      if (!expiring.length) {
+        return {
+          cancelledCount: 0,
+          ttlMinutes: RESERVATION_TTL_MINUTES,
+        };
+      }
+
+      const storageIds = [
+        ...new Set(
+          expiring
+            .map((row) => row.storage_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+
+      if (storageIds.length) {
+        await tx.storages.updateMany({
+          where: { id: { in: storageIds } },
+          data: {
+            status: storages_status.available,
+            updated_at: new Date(),
+          },
+        });
+      }
+
+      const result = await tx.reservations.updateMany({
+        where: { id: { in: expiring.map((row) => row.id) } },
+        data: {
+          status: reservations_status.cancelled,
+          updated_at: new Date(),
+        },
+      });
+
+      return {
+        cancelledCount: result.count,
+        ttlMinutes: RESERVATION_TTL_MINUTES,
+      };
+    });
   }
 
   async cancelReservation(
