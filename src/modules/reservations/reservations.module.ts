@@ -5,6 +5,7 @@ import { CustomerReservationsController } from './customer-reservations.controll
 import { GuestReservationsController } from './guest-reservations.controller';
 import { ReservationsController } from './reservations.controller';
 import { GuestReservationService } from './services/guest-reservation.service';
+import { QrCheckinService } from './services/qr-checkin.service';
 import { ReservationCommandService } from './services/reservation-command.service';
 import { ReservationPricingService } from './pricing/reservation-pricing.service';
 import { ReservationQueryService } from './services/reservation-query.service';
@@ -20,6 +21,7 @@ import { ReservationStorageService } from './services/reservation-storage.servic
   ],
   providers: [
     GuestReservationService,
+    QrCheckinService,
     ReservationPricingService,
     ReservationQueryService,
     ReservationCommandService,
