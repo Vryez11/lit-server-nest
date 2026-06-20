@@ -4,10 +4,20 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { coupon_policies_auto_issue_on, coupons_status, Prisma, reservations_status } from '@prisma/client';
+import {
+  coupon_policies_auto_issue_on,
+  coupons_status,
+  Prisma,
+  reservations_status,
+} from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { CouponAutoIssueService } from '../../coupons/services/coupon-auto-issue.service';
-import { QrCheckinDto, QrCheckinResponseDto, QrCheckoutDto, QrCheckoutResponseDto } from '../dto/qr-checkin.dto';
+import {
+  QrCheckinDto,
+  QrCheckinResponseDto,
+  QrCheckoutDto,
+  QrCheckoutResponseDto,
+} from '../dto/qr-checkin.dto';
 import { ReservationStatusService } from './reservation-status.service';
 import { ReservationStorageService } from './reservation-storage.service';
 
@@ -148,8 +158,7 @@ export class QrCheckinService {
     phoneNumber: string,
     storeId: string,
   ): Promise<boolean> {
-    const isRegistered =
-      !!customerId && customerId.startsWith('customer_');
+    const isRegistered = !!customerId && customerId.startsWith('customer_');
 
     const count = await this.prisma.coupons.count({
       where: {

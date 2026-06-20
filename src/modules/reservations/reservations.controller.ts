@@ -28,7 +28,8 @@ import {
   StoreCheckinDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto';
-import { QrCheckinDto, QrCheckinResponseDto, QrCheckoutDto, QrCheckoutResponseDto } from './dto/qr-checkin.dto';
+// TODO(F-016): 아래 DTO 임포트는 lit-store 앱 배포 시 주석 해제
+// import { QrCheckinDto, QrCheckinResponseDto, QrCheckoutDto, QrCheckoutResponseDto } from './dto/qr-checkin.dto';
 import { QrCheckinService } from './services/qr-checkin.service';
 import { ReservationCommandService } from './services/reservation-command.service';
 import { ReservationQueryService } from './services/reservation-query.service';
@@ -134,25 +135,26 @@ export class ReservationsController {
     return this.reservationCommandService.storeCheckin(storeId, id, dto);
   }
 
-  @Post('checkin-by-token')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'QR 코드 토큰으로 체크인합니다.' })
-  @ApiOkResponse({ type: QrCheckinResponseDto })
-  checkinByToken(
-    @CurrentStoreId() storeId: string,
-    @Body() dto: QrCheckinDto,
-  ) {
-    return this.qrCheckinService.checkinByToken(storeId, dto);
-  }
+  // TODO(F-016): lit-store 앱 배포 시 아래 두 엔드포인트 주석 해제로 활성화
+  // @Post('checkin-by-token')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({ summary: 'QR 코드 토큰으로 체크인합니다.' })
+  // @ApiOkResponse({ type: QrCheckinResponseDto })
+  // checkinByToken(
+  //   @CurrentStoreId() storeId: string,
+  //   @Body() dto: QrCheckinDto,
+  // ) {
+  //   return this.qrCheckinService.checkinByToken(storeId, dto);
+  // }
 
-  @Post('checkout-by-token')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'QR 코드 토큰으로 체크아웃합니다.' })
-  @ApiOkResponse({ type: QrCheckoutResponseDto })
-  checkoutByToken(
-    @CurrentStoreId() storeId: string,
-    @Body() dto: QrCheckoutDto,
-  ) {
-    return this.qrCheckinService.checkoutByToken(storeId, dto);
-  }
+  // @Post('checkout-by-token')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({ summary: 'QR 코드 토큰으로 체크아웃합니다.' })
+  // @ApiOkResponse({ type: QrCheckoutResponseDto })
+  // checkoutByToken(
+  //   @CurrentStoreId() storeId: string,
+  //   @Body() dto: QrCheckoutDto,
+  // ) {
+  //   return this.qrCheckinService.checkoutByToken(storeId, dto);
+  // }
 }
