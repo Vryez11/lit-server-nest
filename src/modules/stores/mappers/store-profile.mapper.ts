@@ -1,5 +1,10 @@
-import { stores } from '@prisma/client';
+import { Prisma, stores } from '@prisma/client';
 import { StoreProfileResponseDto } from '../dto/store-profile.dto';
+
+const toStringArray = (value: Prisma.JsonValue | null | undefined): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+};
 
 export const toStoreProfileResponse = (
   store: stores,
@@ -10,6 +15,7 @@ export const toStoreProfileResponse = (
   phoneNumber: store.phone_number,
   storePhoneNumber: store.store_phone_number,
   notificationPhone: store.notification_phone,
+  notificationPhones: toStringArray(store.notification_phones),
   wantsSmsNotification: store.wants_sms_notification,
   businessNumber: store.business_number,
   representativeName: store.representative_name,

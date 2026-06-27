@@ -31,6 +31,7 @@ export class StoresService {
       dto.phoneNumber !== undefined ||
       dto.storePhoneNumber !== undefined ||
       dto.notificationPhone !== undefined ||
+      dto.notificationPhones !== undefined ||
       dto.wantsSmsNotification !== undefined ||
       dto.representativeName !== undefined ||
       dto.address !== undefined ||
@@ -65,6 +66,13 @@ export class StoresService {
           : {}),
         ...(dto.notificationPhone !== undefined
           ? { notification_phone: dto.notificationPhone.trim() }
+          : {}),
+        ...(dto.notificationPhones !== undefined
+          ? {
+              notification_phones: dto.notificationPhones
+                .map((p) => p.trim())
+                .filter(Boolean) as Prisma.InputJsonArray,
+            }
           : {}),
         ...(dto.wantsSmsNotification !== undefined
           ? { wants_sms_notification: dto.wantsSmsNotification }

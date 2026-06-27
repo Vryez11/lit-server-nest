@@ -19,7 +19,8 @@ import {
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 const LEGACY_TIME_PATTERN = /^(\d|[01]\d|2[0-3]):([0-5]?\d)$/;
-const TIME_WITH_SECONDS_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/;
+const TIME_WITH_SECONDS_PATTERN =
+  /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/;
 
 const normalizeTimeValue = ({ value }: { value: unknown }): unknown => {
   if (value === '' || value === null || value === undefined) {
@@ -223,6 +224,11 @@ export class StoreOperationSettingsDto {
   @IsOptional()
   @IsBoolean()
   autoOverdueNotification?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  is24Hours?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
