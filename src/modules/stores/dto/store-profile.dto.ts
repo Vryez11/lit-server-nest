@@ -7,6 +7,7 @@ import {
   optionalNumber,
 } from '../../../common/transformers/legacy-input.transformer';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsLatitude,
@@ -34,6 +35,9 @@ export class StoreProfileResponseDto {
 
   @ApiPropertyOptional()
   notificationPhone?: string | null;
+
+  @ApiPropertyOptional({ type: [String] })
+  notificationPhones?: string[] | null;
 
   @ApiProperty()
   wantsSmsNotification!: boolean;
@@ -107,6 +111,12 @@ export class UpdateStoreProfileDto {
   @IsString()
   @MaxLength(20)
   notificationPhone?: string;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  notificationPhones?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

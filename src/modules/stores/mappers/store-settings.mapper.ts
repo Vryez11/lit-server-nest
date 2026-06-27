@@ -37,6 +37,7 @@ export const toStoreSettingsResponse = ({
         dailyRateThreshold: settings?.daily_rate_threshold ?? 7,
         autoApproval: settings?.auto_approval ?? false,
         autoOverdueNotification: settings?.auto_overdue_notification ?? true,
+        is24Hours: hours.is_24_hours ?? false,
         holidayNotice: hours.holiday_notice,
         holidayStartDate: dateToString(hours.holiday_start_date),
         holidayEndDate: dateToString(hours.holiday_end_date),

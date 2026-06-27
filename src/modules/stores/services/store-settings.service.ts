@@ -346,6 +346,10 @@ export class StoreSettingsService {
         operation.holidayEndDate !== undefined
           ? this.toDateOrNull(operation.holidayEndDate)
           : (existing?.holiday_end_date ?? null),
+      is_24_hours:
+        operation.is24Hours !== undefined
+          ? operation.is24Hours
+          : (existing?.is_24_hours ?? false),
       updated_at: now,
     };
 

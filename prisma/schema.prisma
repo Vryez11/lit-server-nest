@@ -534,6 +534,7 @@ model store_operating_hours {
   holiday_notice        String?   @db.Text
   holiday_start_date    DateTime? @db.Date
   holiday_end_date      DateTime? @db.Date
+  is_24_hours           Boolean?  @default(false)
   auto_schedule_enabled Boolean?  @default(false)
   created_at            DateTime? @default(now()) @db.Timestamp(0)
   updated_at            DateTime? @default(now()) @db.Timestamp(0)
@@ -638,6 +639,7 @@ model stores {
   phone_number              String?                    @db.VarChar(20)
   store_phone_number        String?                    @db.VarChar(20)
   notification_phone        String?                    @db.VarChar(20)
+  notification_phones       Json?
   wants_sms_notification    Boolean                    @default(false)
   business_type             stores_business_type?
   profile_image_url         String?                    @db.Text
