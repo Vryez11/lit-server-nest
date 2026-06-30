@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { R2StorageService } from '../../common/storage/r2-storage.service';
 import {
+  GuestPresignUploadRequestDto,
   PresignUploadRequestDto,
   PresignUploadResponseDto,
 } from './dto/presign-upload.dto';
@@ -18,7 +19,7 @@ export class UploadsService {
 
   async presign(
     actorId: string,
-    dto: PresignUploadRequestDto,
+    dto: PresignUploadRequestDto | GuestPresignUploadRequestDto,
   ): Promise<PresignUploadResponseDto> {
     const ext = CONTENT_TYPE_TO_EXT[dto.contentType];
 
