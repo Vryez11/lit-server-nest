@@ -81,6 +81,44 @@ describe('NotificationsService', () => {
     jest.restoreAllMocks();
   });
 
+  it('includes a signed owner action url in the create alimtalk when the secret is configured', async () => {
+    const { service } = createService({
+      SOLAPI_API_KEY: 'k',
+      SOLAPI_API_SECRET: 's',
+      SOLAPI_KAKAO_PF_ID: 'pf',
+      SOLAPI_KAKAO_TEMPLATE_ID: 'tmpl',
+      OWNER_ACTION_SECRET: 'test-secret-at-least-32-characters!!',
+    });
+
+    await service.sendCreateNotification({
+      reservationId: 'res_abc',
+      storeName: '테스트 매장',
+      storeAddress: '서울',
+      ownerPhone: '01099998888',
+      customerName: '홍길동',
+      customerPhone: '01012345678',
+      luggageItems: [{ type: 's', count: 1 }],
+      startTime: new Date(),
+      endTime: new Date(),
+      duration: 4,
+      totalAmount: 4500,
+      locale: 'ko',
+    });
+
+    type SolapiSendArg = {
+      kakaoOptions?: {
+        templateId?: string;
+        variables?: Record<string, string>;
+      };
+    };
+    const ownerCall = (solapiSendMock.mock.calls as [SolapiSendArg][]).find(
+      (call) => call[0]?.kakaoOptions?.templateId === 'tmpl',
+    );
+    expect(ownerCall?.[0].kakaoOptions?.variables?.['#{action_url}']).toMatch(
+      /^www\.lifeistravel\.io\/o\/res_abc\?t=[A-Za-z0-9_-]+$/,
+    );
+  });
+
   it('logs an error when a cancel notification channel fails', async () => {
     const { service, errorSpy } = createService({
       DISCORD_RESERVATION_WEBHOOK_URL: 'https://discord.test/webhook',

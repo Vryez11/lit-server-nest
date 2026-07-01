@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SolapiMessageService } from 'solapi';
 import { MailService } from '../auth/services/mail.service';
+import { createOwnerActionToken } from '../owner-actions/owner-action-token.util';
 
 export interface CheckoutNotificationData {
   reservationId: string;
@@ -502,6 +503,14 @@ export class NotificationsService {
         : '현장결제';
     const language = LOCALE_LABELS[data.locale] ?? data.locale;
 
+    const ownerActionSecret = this.configService.get<string>(
+      'OWNER_ACTION_SECRET',
+    );
+    // 템플릿에 버튼(변수)이 아직 없어도 미사용 변수는 무시되므로 항상 전달해도 안전
+    const actionUrl = ownerActionSecret
+      ? `www.lifeistravel.io/o/${data.reservationId}?t=${createOwnerActionToken(data.reservationId, ownerActionSecret)}`
+      : '';
+
     const client = new SolapiMessageService(apiKey, apiSecret);
 
     await client.send({
@@ -517,6 +526,7 @@ export class NotificationsService {
           '#{end_time}': endFormatted,
           '#{amount}': amount,
           '#{customer_language}': language,
+          '#{action_url}': actionUrl,
         },
       },
     });
