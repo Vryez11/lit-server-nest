@@ -14,7 +14,5 @@ export const verifyOwnerActionToken = (
 ): boolean => {
   const expected = Buffer.from(createOwnerActionToken(reservationId, secret));
   const actual = Buffer.from(String(token ?? ''));
-  return (
-    expected.length === actual.length && timingSafeEqual(expected, actual)
-  );
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 };
