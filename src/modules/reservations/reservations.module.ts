@@ -12,6 +12,7 @@ import { ReservationPricingService } from './pricing/reservation-pricing.service
 import { ReservationQueryService } from './services/reservation-query.service';
 import { ReservationStatusService } from './services/reservation-status.service';
 import { ReservationStorageService } from './services/reservation-storage.service';
+import { ReservationAutoCompleteService } from './services/reservation-auto-complete.service';
 
 @Module({
   imports: [AuthModule, CouponsModule, NotificationsModule],
@@ -28,6 +29,7 @@ import { ReservationStorageService } from './services/reservation-storage.servic
     ReservationCommandService,
     ReservationStatusService,
     ReservationStorageService,
+    ReservationAutoCompleteService,
   ],
   exports: [ReservationStorageService],
 })

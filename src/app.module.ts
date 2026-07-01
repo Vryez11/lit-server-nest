@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './common/database/prisma.module';
 import { envValidationSchema } from './config/env.validation';
@@ -36,6 +37,7 @@ import { OwnerActionsModule } from './modules/owner-actions/owner-actions.module
       inject: [ConfigService],
       useFactory: createLoggerParams,
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     R2StorageModule,
     AddressesModule,
