@@ -37,21 +37,53 @@ export interface CancelNotificationData {
 
 /** 짐 타입 코드 → 언어별 레이블 */
 const LUGGAGE_LABELS: Record<string, Record<string, string>> = {
-  ko: { s: '소형', m: '중형', l: '대형', xl: '특대', special: '특수', refrigeration: '냉장' },
-  en: { s: 'Small', m: 'Medium', l: 'Large', xl: 'Extra Large', special: 'Special', refrigeration: 'Refrigerated' },
-  ja: { s: '小型', m: '中型', l: '大型', xl: '特大', special: '特殊', refrigeration: '冷蔵' },
-  zh: { s: '小型', m: '中型', l: '大型', xl: '特大', special: '特殊', refrigeration: '冷藏' },
+  ko: {
+    s: '소형',
+    m: '중형',
+    l: '대형',
+    xl: '특대',
+    special: '특수',
+    refrigeration: '냉장',
+  },
+  en: {
+    s: 'Small',
+    m: 'Medium',
+    l: 'Large',
+    xl: 'Extra Large',
+    special: 'Special',
+    refrigeration: 'Refrigerated',
+  },
+  ja: {
+    s: '小型',
+    m: '中型',
+    l: '大型',
+    xl: '特大',
+    special: '特殊',
+    refrigeration: '冷蔵',
+  },
+  zh: {
+    s: '小型',
+    m: '中型',
+    l: '大型',
+    xl: '特大',
+    special: '特殊',
+    refrigeration: '冷藏',
+  },
 };
 
 /** locale → 알림에서 표시할 언어 이름 */
 const LOCALE_LABELS: Record<string, string> = {
-  ko: '한국어', en: '영어', ja: '일본어', zh: '중국어',
+  ko: '한국어',
+  en: '영어',
+  ja: '일본어',
+  zh: '중국어',
 };
 
 /** 예약 ID의 마지막 6자리 대문자 코드 */
 function shortCode(reservationId: string): string {
   const lastDash = reservationId.lastIndexOf('-');
-  const tail = lastDash >= 0 ? reservationId.slice(lastDash + 1) : reservationId;
+  const tail =
+    lastDash >= 0 ? reservationId.slice(lastDash + 1) : reservationId;
   return tail.slice(-6).toUpperCase();
 }
 
@@ -75,9 +107,13 @@ function formatKoreanDateTime(date: Date): string {
 function formatLocalizedDateTime(date: Date, locale: string): string {
   try {
     const intlLocale =
-      locale === 'zh' ? 'zh-CN' :
-      locale === 'ja' ? 'ja-JP' :
-      locale === 'en' ? 'en-US' : 'ko-KR';
+      locale === 'zh'
+        ? 'zh-CN'
+        : locale === 'ja'
+          ? 'ja-JP'
+          : locale === 'en'
+            ? 'en-US'
+            : 'ko-KR';
     return new Intl.DateTimeFormat(intlLocale, {
       timeZone: 'Asia/Seoul',
       month: 'short',
@@ -107,8 +143,17 @@ function buildLuggageListFromItems(
   locale: string,
 ): string {
   const labels = LUGGAGE_LABELS[locale] ?? LUGGAGE_LABELS.en;
-  const unit = locale === 'ko' ? '개' : locale === 'ja' ? '個' : locale === 'zh' ? '件' : '';
-  return items.map(item => `${labels[item.type] ?? item.type} ${item.count}${unit}`).join(', ');
+  const unit =
+    locale === 'ko'
+      ? '개'
+      : locale === 'ja'
+        ? '個'
+        : locale === 'zh'
+          ? '件'
+          : '';
+  return items
+    .map((item) => `${labels[item.type] ?? item.type} ${item.count}${unit}`)
+    .join(', ');
 }
 
 /** 한국 번호 여부 판단 (010, 011, +82 등) */
@@ -132,10 +177,19 @@ function buildLookupUrl(phone: string, locale: string): string {
 }
 
 /** 고객 SMS 템플릿 (locale별) */
-const SMS_TEMPLATES: Record<string, (p: {
-  code: string; store: string; address: string;
-  luggage: string; start: string; end: string; amount: string; url: string;
-}) => string> = {
+const SMS_TEMPLATES: Record<
+  string,
+  (p: {
+    code: string;
+    store: string;
+    address: string;
+    luggage: string;
+    start: string;
+    end: string;
+    amount: string;
+    url: string;
+  }) => string
+> = {
   ko: ({ code, store, address, luggage, start, end, amount, url }) =>
     `[LIT] 예약이 완료되었습니다!\n예약코드: ${code}\n매장: ${store}\n주소: ${address}\n짐 목록: ${luggage}\n보관 시작: ${start}\n픽업 예정: ${end}\n결제 금액: ${amount}\n예약 조회: ${url}\n즐거운 여행 되세요! ✈️\n문의: contact@lifeistravel.io`,
   en: ({ code, store, address, luggage, start, end, amount, url }) =>
@@ -154,21 +208,50 @@ export class NotificationsService {
 
   /**
    * 예약 취소 시 Discord embed + 카카오 알림톡(점주)을 발송합니다.
-   * 환경변수 미설정 시 해당 채널을 스킵하며, 예외는 호출자가 처리합니다.
+   * 환경변수 미설정 시 해당 채널을 스킵합니다. 채널별 실패는 여기서
+   * error 로그로 남깁니다 (allSettled는 reject되지 않으므로 호출자 catch에 안 잡힘).
    */
   async sendCancelNotification(data: CancelNotificationData): Promise<void> {
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       this.sendDiscordCancelEmbed(data),
       this.sendKakaoCancelAlimtalk(data),
     ]);
+    this.logSettledFailures(data.reservationId, results, [
+      'discord',
+      'kakao_owner',
+    ]);
+  }
+
+  /** allSettled 결과 중 rejected 채널을 error 로그로 기록합니다. */
+  private logSettledFailures(
+    reservationId: string,
+    results: PromiseSettledResult<unknown>[],
+    channels: string[],
+  ): void {
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        this.logger.error({
+          event: 'notifications.channel_failed',
+          channel: channels[index] ?? `unknown_${index}`,
+          reservationId,
+          err: result.reason as unknown,
+        });
+      }
+    });
   }
 
   // ─── Discord ─────────────────────────────────────────────────────────
 
-  private async sendDiscordCancelEmbed(data: CancelNotificationData): Promise<void> {
-    const webhookUrl = this.configService.get<string>('DISCORD_RESERVATION_WEBHOOK_URL');
+  private async sendDiscordCancelEmbed(
+    data: CancelNotificationData,
+  ): Promise<void> {
+    const webhookUrl = this.configService.get<string>(
+      'DISCORD_RESERVATION_WEBHOOK_URL',
+    );
     if (!webhookUrl) {
-      this.logger.debug('DISCORD_RESERVATION_WEBHOOK_URL 미설정 — Discord 알림 스킵');
+      this.logger.debug(
+        'DISCORD_RESERVATION_WEBHOOK_URL 미설정 — Discord 알림 스킵',
+      );
       return;
     }
 
@@ -180,8 +263,16 @@ export class NotificationsService {
       title: `❌ 예약 취소 [${code}]`,
       color: 0xef4444,
       fields: [
-        { name: '매장명', value: data.storeName || '(알 수 없음)', inline: true },
-        { name: '고객 연락처', value: data.customerPhone || '(없음)', inline: true },
+        {
+          name: '매장명',
+          value: data.storeName || '(알 수 없음)',
+          inline: true,
+        },
+        {
+          name: '고객 연락처',
+          value: data.customerPhone || '(없음)',
+          inline: true,
+        },
         { name: '예약코드', value: code, inline: true },
         { name: '짐 정보', value: luggageList, inline: true },
         { name: '보관 시작 시각', value: startFormatted, inline: true },
@@ -208,11 +299,15 @@ export class NotificationsService {
 
   // ─── Kakao 알림톡 ─────────────────────────────────────────────────
 
-  private async sendKakaoCancelAlimtalk(data: CancelNotificationData): Promise<void> {
+  private async sendKakaoCancelAlimtalk(
+    data: CancelNotificationData,
+  ): Promise<void> {
     const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
     const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
     const pfId = this.configService.get<string>('SOLAPI_KAKAO_PF_ID');
-    const templateId = this.configService.get<string>('SOLAPI_KAKAO_CANCEL_TEMPLATE_ID');
+    const templateId = this.configService.get<string>(
+      'SOLAPI_KAKAO_CANCEL_TEMPLATE_ID',
+    );
 
     if (!apiKey || !apiSecret || !pfId || !templateId) {
       this.logger.debug('Solapi 환경변수 미설정 — 카카오 취소 알림톡 스킵');
@@ -259,20 +354,31 @@ export class NotificationsService {
 
   /**
    * 예약 생성 시 Discord embed + 점주 알림톡 + 고객 알림(알림톡 or SMS)을 병렬 발송합니다.
-   * 환경변수 미설정 채널은 스킵되며, 예외는 호출자가 처리합니다.
+   * 환경변수 미설정 채널은 스킵됩니다. 채널별 실패는 여기서 error 로그로 남깁니다.
    */
   async sendCreateNotification(data: CreateNotificationData): Promise<void> {
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       this.sendDiscordCreateEmbed(data),
       this.sendKakaoCreateAlimtalkToOwner(data),
       this.sendCustomerCreateNotification(data),
     ]);
+    this.logSettledFailures(data.reservationId, results, [
+      'discord',
+      'kakao_owner',
+      'customer',
+    ]);
   }
 
-  private async sendDiscordCreateEmbed(data: CreateNotificationData): Promise<void> {
-    const webhookUrl = this.configService.get<string>('DISCORD_RESERVATION_WEBHOOK_URL');
+  private async sendDiscordCreateEmbed(
+    data: CreateNotificationData,
+  ): Promise<void> {
+    const webhookUrl = this.configService.get<string>(
+      'DISCORD_RESERVATION_WEBHOOK_URL',
+    );
     if (!webhookUrl) {
-      this.logger.debug('DISCORD_RESERVATION_WEBHOOK_URL 미설정 — Discord 예약 생성 알림 스킵');
+      this.logger.debug(
+        'DISCORD_RESERVATION_WEBHOOK_URL 미설정 — Discord 예약 생성 알림 스킵',
+      );
       return;
     }
 
@@ -280,17 +386,26 @@ export class NotificationsService {
     const luggageList = buildLuggageListFromItems(data.luggageItems, 'ko');
     const startFormatted = formatKoreanDateTime(data.startTime);
     const endFormatted = formatKoreanDateTime(data.endTime);
-    const amountText = data.totalAmount > 0
-      ? `${data.totalAmount.toLocaleString('ko-KR')}원`
-      : '현장결제';
+    const amountText =
+      data.totalAmount > 0
+        ? `${data.totalAmount.toLocaleString('ko-KR')}원`
+        : '현장결제';
     const localeLabel = LOCALE_LABELS[data.locale] ?? data.locale;
 
     const embed = {
       title: `🧳 새 예약! [${code}]`,
-      color: 0x10B981,
+      color: 0x10b981,
       fields: [
-        { name: '매장명', value: data.storeName || '(알 수 없음)', inline: true },
-        { name: '고객명/연락처', value: `${data.customerName} / ${data.customerPhone}`, inline: true },
+        {
+          name: '매장명',
+          value: data.storeName || '(알 수 없음)',
+          inline: true,
+        },
+        {
+          name: '고객명/연락처',
+          value: `${data.customerName} / ${data.customerPhone}`,
+          inline: true,
+        },
         { name: '예약코드', value: code, inline: true },
         { name: '짐 목록', value: luggageList || '(없음)', inline: true },
         { name: '보관 시작', value: startFormatted, inline: true },
@@ -318,11 +433,15 @@ export class NotificationsService {
     });
   }
 
-  private async sendKakaoCreateAlimtalkToOwner(data: CreateNotificationData): Promise<void> {
+  private async sendKakaoCreateAlimtalkToOwner(
+    data: CreateNotificationData,
+  ): Promise<void> {
     const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
     const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
     const pfId = this.configService.get<string>('SOLAPI_KAKAO_PF_ID');
-    const templateId = this.configService.get<string>('SOLAPI_KAKAO_TEMPLATE_ID');
+    const templateId = this.configService.get<string>(
+      'SOLAPI_KAKAO_TEMPLATE_ID',
+    );
 
     if (!apiKey || !apiSecret || !pfId || !templateId) {
       this.logger.debug('Solapi 환경변수 미설정 — 점주 예약 생성 알림톡 스킵');
@@ -338,9 +457,10 @@ export class NotificationsService {
     const luggageList = buildLuggageListFromItems(data.luggageItems, 'ko');
     const startFormatted = formatKoreanDateTime(data.startTime);
     const endFormatted = formatKoreanDateTime(data.endTime);
-    const amount = data.totalAmount > 0
-      ? data.totalAmount.toLocaleString('ko-KR')
-      : '현장결제';
+    const amount =
+      data.totalAmount > 0
+        ? data.totalAmount.toLocaleString('ko-KR')
+        : '현장결제';
     const language = LOCALE_LABELS[data.locale] ?? data.locale;
 
     const client = new SolapiMessageService(apiKey, apiSecret);
@@ -369,7 +489,9 @@ export class NotificationsService {
     });
   }
 
-  private async sendCustomerCreateNotification(data: CreateNotificationData): Promise<void> {
+  private async sendCustomerCreateNotification(
+    data: CreateNotificationData,
+  ): Promise<void> {
     const customerPhone = data.customerPhone;
 
     if (!customerPhone) {
@@ -397,11 +519,15 @@ export class NotificationsService {
     }
   }
 
-  private async sendAlimtalkToCustomer(data: CreateNotificationData): Promise<boolean> {
+  private async sendAlimtalkToCustomer(
+    data: CreateNotificationData,
+  ): Promise<boolean> {
     const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
     const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
     const pfId = this.configService.get<string>('SOLAPI_KAKAO_PF_ID');
-    const templateId = this.configService.get<string>('SOLAPI_KAKAO_CUSTOMER_TEMPLATE_ID');
+    const templateId = this.configService.get<string>(
+      'SOLAPI_KAKAO_CUSTOMER_TEMPLATE_ID',
+    );
 
     if (!apiKey || !apiSecret || !pfId || !templateId) {
       this.logger.debug('고객 알림톡 환경변수 미설정 — 알림톡 스킵');
@@ -413,9 +539,10 @@ export class NotificationsService {
     const luggageList = buildLuggageListFromItems(data.luggageItems, locale);
     const startFormatted = formatLocalizedDateTime(data.startTime, locale);
     const endFormatted = formatLocalizedDateTime(data.endTime, locale);
-    const amount = data.totalAmount > 0
-      ? data.totalAmount.toLocaleString('ko-KR')
-      : '현장 결제';
+    const amount =
+      data.totalAmount > 0
+        ? data.totalAmount.toLocaleString('ko-KR')
+        : '현장 결제';
 
     try {
       const client = new SolapiMessageService(apiKey, apiSecret);
@@ -442,8 +569,11 @@ export class NotificationsService {
         reservationId: data.reservationId,
       });
       return true;
-    } catch (err) {
-      this.logger.warn({ event: 'notifications.kakao_create_customer_failed', err });
+    } catch (err: unknown) {
+      this.logger.warn({
+        event: 'notifications.kakao_create_customer_failed',
+        err,
+      });
       return false;
     }
   }
@@ -463,9 +593,12 @@ export class NotificationsService {
     const luggageList = buildLuggageListFromItems(data.luggageItems, locale);
     const startFormatted = formatLocalizedDateTime(data.startTime, locale);
     const endFormatted = formatLocalizedDateTime(data.endTime, locale);
-    const amount = data.totalAmount > 0
-      ? `₩${data.totalAmount.toLocaleString()}`
-      : locale === 'ko' ? '현장 결제' : 'Pay at store';
+    const amount =
+      data.totalAmount > 0
+        ? `₩${data.totalAmount.toLocaleString()}`
+        : locale === 'ko'
+          ? '현장 결제'
+          : 'Pay at store';
 
     const lookupUrl = buildLookupUrl(data.customerPhone, locale);
     const template = SMS_TEMPLATES[locale] ?? SMS_TEMPLATES.en;
@@ -487,15 +620,18 @@ export class NotificationsService {
         from: senderPhone,
         text,
         type: 'LMS',
-      } as Parameters<typeof client.send>[0]);
+      });
 
       this.logger.log({
         event: 'notifications.sms_create_customer_sent',
         reservationId: data.reservationId,
         locale,
       });
-    } catch (err) {
-      this.logger.warn({ event: 'notifications.sms_create_customer_failed', err });
+    } catch (err: unknown) {
+      this.logger.warn({
+        event: 'notifications.sms_create_customer_failed',
+        err,
+      });
     }
   }
 
@@ -510,10 +646,16 @@ export class NotificationsService {
     await this.sendDiscordPhotosEmbed(data);
   }
 
-  private async sendDiscordPhotosEmbed(data: PhotosNotificationData): Promise<void> {
-    const webhookUrl = this.configService.get<string>('DISCORD_RESERVATION_WEBHOOK_URL');
+  private async sendDiscordPhotosEmbed(
+    data: PhotosNotificationData,
+  ): Promise<void> {
+    const webhookUrl = this.configService.get<string>(
+      'DISCORD_RESERVATION_WEBHOOK_URL',
+    );
     if (!webhookUrl) {
-      this.logger.debug('DISCORD_RESERVATION_WEBHOOK_URL 미설정 — 짐 사진 Discord 알림 스킵');
+      this.logger.debug(
+        'DISCORD_RESERVATION_WEBHOOK_URL 미설정 — 짐 사진 Discord 알림 스킵',
+      );
       return;
     }
 
@@ -526,9 +668,13 @@ export class NotificationsService {
 
     const embed: Record<string, unknown> = {
       title: `📷 짐 사진 [${code}]`,
-      color: 0x3B82F6,
+      color: 0x3b82f6,
       fields: [
-        { name: '매장명', value: data.storeName || '(알 수 없음)', inline: true },
+        {
+          name: '매장명',
+          value: data.storeName || '(알 수 없음)',
+          inline: true,
+        },
         { name: '예약 ID', value: data.reservationId, inline: true },
         { name: '사진 수', value: String(data.photoUrls.length), inline: true },
         { name: '사진 링크', value: photoLinks },
@@ -547,7 +693,9 @@ export class NotificationsService {
     });
 
     if (!res.ok) {
-      throw new Error(`Discord webhook 실패 (짐 사진): ${res.status} ${res.statusText}`);
+      throw new Error(
+        `Discord webhook 실패 (짐 사진): ${res.status} ${res.statusText}`,
+      );
     }
 
     this.logger.log({

@@ -59,6 +59,11 @@ const createGuestReservationService = () => {
   const mailService = {
     sendReservationCreatedEmail: jest.fn().mockResolvedValue(undefined),
   };
+  const notificationsService = {
+    sendCreateNotification: jest.fn().mockResolvedValue(undefined),
+    sendCancelNotification: jest.fn().mockResolvedValue(undefined),
+    sendPhotosNotification: jest.fn().mockResolvedValue(undefined),
+  };
 
   return {
     service: new GuestReservationService(
@@ -66,10 +71,12 @@ const createGuestReservationService = () => {
       reservationStorageService,
       reservationPricingService,
       mailService as never,
+      notificationsService as never,
     ),
     prisma,
     tx,
     mailService,
+    notificationsService,
   };
 };
 

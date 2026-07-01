@@ -1,10 +1,19 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { AuthThrottlerGuard } from '../auth/guards/auth-throttler.guard';
 import { CustomerAuthGuard } from '../auth/guards/customer-auth.guard';
 import { StoreAuthGuard } from '../auth/guards/store-auth.guard';
 import { CurrentCustomerId } from '../auth/decorators/current-customer.decorator';
@@ -45,8 +54,11 @@ export class UploadsController {
   /**
    * 비회원(게스트)용 presigned PUT URL 발급.
    * 인증 없이 호출 가능하며, reservations/ 폴더만 허용합니다.
+   * 무인증 엔드포인트이므로 IP 기준 rate-limit으로 스토리지 남용을 차단합니다.
    */
   @Post('api/guest/uploads/presign')
+  @UseGuards(AuthThrottlerGuard)
+  @Throttle({ default: { limit: 15, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: '(비회원용) R2 presigned PUT URL 발급',
