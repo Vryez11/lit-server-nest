@@ -58,17 +58,18 @@ export class PresignUploadRequestDto {
 
 export class GuestPresignUploadRequestDto {
   /**
-   * 업로드 대상 폴더입니다. 비회원 업로드는 reservations/ 폴더만 허용됩니다.
-   * 예: "reservations/2026-07", "reservations/photos"
+   * 업로드 대상 폴더입니다. 비회원 업로드는 reservations/ 또는 reviews/ 폴더만 허용됩니다.
+   * 예: "reservations/2026-07", "reviews/store_1"
    */
   @ApiProperty({
-    description: '업로드 대상 폴더. reservations/ 로 시작해야 합니다.',
+    description:
+      '업로드 대상 폴더. reservations/ 또는 reviews/ 로 시작해야 합니다.',
     example: 'reservations/2026-07',
   })
   @IsString()
   @MaxLength(200)
-  @Matches(/^reservations\//, {
-    message: 'folder는 reservations/ 로 시작해야 합니다.',
+  @Matches(/^(reservations|reviews)\//, {
+    message: 'folder는 reservations/ 또는 reviews/ 로 시작해야 합니다.',
   })
   folder!: string;
 
