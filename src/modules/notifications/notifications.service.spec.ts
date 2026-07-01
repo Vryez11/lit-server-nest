@@ -9,8 +9,11 @@ const createService = (config: Record<string, string>) => {
   const configService = {
     get: jest.fn((key: string) => config[key]),
   } as unknown as ConfigService;
+  const mailService = {
+    sendReviewRequestEmail: jest.fn().mockResolvedValue(undefined),
+  };
 
-  const service = new NotificationsService(configService);
+  const service = new NotificationsService(configService, mailService as never);
   const errorSpy = jest
     .spyOn(
       (
@@ -22,7 +25,7 @@ const createService = (config: Record<string, string>) => {
     )
     .mockImplementation(() => undefined);
 
-  return { service, errorSpy };
+  return { service, mailService, errorSpy };
 };
 
 const cancelData: CancelNotificationData = {
@@ -49,6 +52,16 @@ const createData: CreateNotificationData = {
   duration: 4,
   totalAmount: 4500,
   locale: 'ko',
+};
+
+const checkoutData = {
+  reservationId: 'res_abc-123456',
+  storeName: '테스트 매장',
+  customerName: '홍길동',
+  customerPhone: '01012345678',
+  customerEmail: null as string | null,
+  locale: 'ko',
+  reviewPath: 'www.lifeistravel.io/review/res_abc?token=tok',
 };
 
 describe('NotificationsService', () => {
@@ -114,5 +127,52 @@ describe('NotificationsService', () => {
     await service.sendCancelNotification(cancelData);
 
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  describe('sendCheckoutNotification', () => {
+    it('sends the review-request email when the guest booked with an email address', async () => {
+      const { service, mailService } = createService({});
+
+      await service.sendCheckoutNotification({
+        ...checkoutData,
+        customerPhone: 'guest@example.com',
+        customerEmail: 'guest@example.com',
+        locale: 'en',
+      });
+
+      expect(mailService.sendReviewRequestEmail).toHaveBeenCalledWith(
+        'guest@example.com',
+        expect.objectContaining({
+          locale: 'en',
+          storeName: '테스트 매장',
+          reviewUrl: 'https://www.lifeistravel.io/review/res_abc?token=tok',
+        }),
+      );
+    });
+
+    it('prefers email over LMS for a foreign phone number with an email on file', async () => {
+      const { service, mailService } = createService({});
+
+      await service.sendCheckoutNotification({
+        ...checkoutData,
+        customerPhone: '+14155550123',
+        customerEmail: 'traveler@example.com',
+        locale: 'en',
+      });
+
+      expect(mailService.sendReviewRequestEmail).toHaveBeenCalledWith(
+        'traveler@example.com',
+        expect.anything(),
+      );
+    });
+
+    it('skips silently when no solapi env and no email exist (korean phone)', async () => {
+      const { service, mailService, errorSpy } = createService({});
+
+      await service.sendCheckoutNotification(checkoutData);
+
+      expect(mailService.sendReviewRequestEmail).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
   });
 });
