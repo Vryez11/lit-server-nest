@@ -211,6 +211,26 @@ export class GuestReservationService {
 
     await this.sendReservationCreatedEmailSafely(reservation);
 
+    // 알림 fan-out (fire-and-forget) — 실패해도 예약 결과에 영향 없음
+    const ownerPhone = store.notification_phone ?? store.phone_number ?? '';
+    const storeAddress = store.address ?? '';
+    const totalAmount = amounts.reduce((sum, a) => sum + a, 0);
+    this.notificationsService.sendCreateNotification({
+      reservationId: representativeId,
+      storeName: toGuestStoreName(store),
+      storeAddress,
+      ownerPhone,
+      customerName: dto.customerName,
+      customerPhone: phoneNumber,
+      customerEmail: email ?? undefined,
+      luggageItems: items.map(i => ({ type: i.storageType, count: i.bagCount })),
+      startTime,
+      endTime,
+      duration: dto.duration,
+      totalAmount,
+      locale,
+    }).catch(err => this.logger.error('예약 생성 알림 실패', err));
+
     return {
       reservation,
       storeName: toGuestStoreName(store),
@@ -734,6 +754,17 @@ export class GuestReservationService {
       count: merged.length,
     });
 
+    // 짐 사진 Discord 알림 (fire-and-forget)
+    const storeInfo = await this.prisma.stores.findFirst({
+      where: { id: reservation.store_id },
+      select: { business_name: true },
+    });
+    this.notificationsService.sendPhotosNotification({
+      reservationId,
+      storeName: storeInfo?.business_name ?? '',
+      photoUrls: merged,
+    }).catch(err => this.logger.error('짐 사진 알림 실패', err));
+
     return { id: reservationId, luggageImageUrls: merged };
   }
 
@@ -869,6 +900,9 @@ export class GuestReservationService {
       select: {
         id: true,
         business_name: true,
+        address: true,
+        notification_phone: true,
+        phone_number: true,
       },
     });
 
