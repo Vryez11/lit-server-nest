@@ -34,6 +34,26 @@ describe('OwnerActionTokenGuard', () => {
     );
   });
 
+  it('rejects array query params (?t=a&t=b)', () => {
+    const guard = createGuard(SECRET);
+    const ctx = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          params: { id: 'res_1' },
+          query: { t: ['validish', 'token'] },
+        }),
+      }),
+    } as never;
+    expect(() => guard.canActivate(ctx)).toThrow('Unauthorized');
+  });
+
+  it('rejects when ?t is absent', () => {
+    const guard = createGuard(SECRET);
+    expect(() => guard.canActivate(createContext('res_1'))).toThrow(
+      'Unauthorized',
+    );
+  });
+
   it('rejects everything when OWNER_ACTION_SECRET is not configured', () => {
     const guard = createGuard(undefined);
     const token = createOwnerActionToken('res_1', SECRET);
