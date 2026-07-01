@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './common/database/prisma.module';
 import { envValidationSchema } from './config/env.validation';
 import { createLoggerParams } from './config/logger.config';
+import { R2StorageModule } from './common/storage/r2-storage.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CustomerAuthModule } from './modules/customer-auth/customer-auth.module';
@@ -33,6 +34,7 @@ import { StoresModule } from './modules/stores/stores.module';
       useFactory: createLoggerParams,
     }),
     PrismaModule,
+    R2StorageModule,
     AddressesModule,
     AuthModule,
     CustomerAuthModule,

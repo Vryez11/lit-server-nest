@@ -51,4 +51,12 @@ export const envValidationSchema = Joi.object({
   // 카카오 REST API 키 (https://developers.kakao.com)
   // 주소 검색 및 지오코딩에 사용
   KAKAO_REST_API_KEY: Joi.string().required(),
+
+  // Cloudflare R2 Object Storage
+  CF_R2_ACCOUNT_ID: Joi.string().required(),
+  CF_R2_BUCKET: Joi.string().required(),
+  CF_R2_ACCESS_KEY_ID: Joi.string().required(),
+  CF_R2_SECRET_ACCESS_KEY: Joi.string().required(),
+  // 버킷 Public Access 활성화 시 설정 (예: https://pub-xxxx.r2.dev)
+  CF_R2_PUBLIC_URL: Joi.string().uri().optional(),
 });
