@@ -101,7 +101,8 @@ export class PresignUploadResponseDto {
 
   @ApiProperty({
     description: '업로드 후 서버에 전달할 objectKey입니다.',
-    example: 'reservations/2026-07/1751234567890-550e8400-e29b-41d4-a716-446655440000.jpg',
+    example:
+      'reservations/2026-07/1751234567890-550e8400-e29b-41d4-a716-446655440000.jpg',
   })
   objectKey!: string;
 
