@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { reservations_status } from '@prisma/client';
+import { Prisma, reservations_status } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { GuestReviewService } from './guest-review.service';
 
@@ -162,6 +162,31 @@ describe('GuestReviewService.createReview', () => {
     expect(result.photoUrls).toEqual([
       'https://pub-test.r2.dev/reviews/store_1/a.jpg',
     ]);
+  });
+
+  it('returns 404 when the reservation does not exist', async () => {
+    const { service, prisma } = createService();
+    prisma.reservations.findFirst.mockResolvedValue(null);
+
+    await expect(service.createReview(validDto)).rejects.toMatchObject({
+      response: { code: 'RESERVATION_NOT_FOUND' },
+    });
+  });
+
+  it('converts a P2002 unique-constraint race into REVIEW_ALREADY_EXISTS', async () => {
+    const { service, prisma } = createService();
+    prisma.reservations.findFirst.mockResolvedValue(completedReservation);
+    prisma.reviews.findFirst.mockResolvedValue(null);
+    prisma.reviews.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(service.createReview(validDto)).rejects.toMatchObject({
+      response: { code: 'REVIEW_ALREADY_EXISTS' },
+    });
   });
 
   it('normalizes a member id to the group representative for dedup', async () => {

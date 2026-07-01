@@ -493,7 +493,13 @@ export class GuestReservationService {
       }
 
       const result = await tx.reservations.updateMany({
-        where: { id: { in: expiring.map((row) => row.id) } },
+        where: {
+          id: { in: expiring.map((row) => row.id) },
+          status: {
+            in: [reservations_status.pending, reservations_status.confirmed],
+          },
+          payment_status: reservations_payment_status.pending,
+        },
         data: {
           status: reservations_status.cancelled,
           updated_at: new Date(),

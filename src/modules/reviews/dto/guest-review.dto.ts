@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -27,6 +28,9 @@ export class CreateGuestReviewDto {
   rating!: number;
 
   @ApiProperty({ minLength: 10, maxLength: 1000 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @MinLength(10)
   @MaxLength(1000)

@@ -1018,12 +1018,23 @@ describe('GuestReservationService', () => {
       where: { id: { in: ['storage_1'] } },
       data: expect.objectContaining({ status: storages_status.available }),
     });
-    expect(tx.reservations.updateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['res_1', 'res_2'] } },
-      data: expect.objectContaining({
-        status: reservations_status.cancelled,
+    expect(tx.reservations.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['res_1', 'res_2'] },
+          status: expect.objectContaining({
+            in: expect.arrayContaining([
+              reservations_status.pending,
+              reservations_status.confirmed,
+            ]),
+          }),
+          payment_status: reservations_payment_status.pending,
+        }),
+        data: expect.objectContaining({
+          status: reservations_status.cancelled,
+        }),
       }),
-    });
+    );
     expect(result).toEqual({ cancelledCount: 2, ttlMinutes: 30 });
   });
 

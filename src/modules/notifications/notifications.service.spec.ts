@@ -5,6 +5,13 @@ import {
   NotificationsService,
 } from './notifications.service';
 
+const solapiSendMock = jest.fn().mockResolvedValue(undefined);
+jest.mock('solapi', () => ({
+  SolapiMessageService: jest.fn().mockImplementation(() => ({
+    send: solapiSendMock,
+  })),
+}));
+
 const createService = (config: Record<string, string>) => {
   const configService = {
     get: jest.fn((key: string) => config[key]),
@@ -65,6 +72,10 @@ const checkoutData = {
 };
 
 describe('NotificationsService', () => {
+  beforeEach(() => {
+    solapiSendMock.mockClear();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -173,6 +184,27 @@ describe('NotificationsService', () => {
 
       expect(mailService.sendReviewRequestEmail).not.toHaveBeenCalled();
       expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to Korean LMS with the review URL when alimtalk env is absent but sender phone exists', async () => {
+      const { service } = createService({
+        SOLAPI_API_KEY: 'k',
+        SOLAPI_API_SECRET: 's',
+        SOLAPI_SENDER_PHONE: '0212345678',
+      });
+
+      await service.sendCheckoutNotification(checkoutData);
+
+      expect(solapiSendMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '01012345678',
+          from: '0212345678',
+          type: 'LMS',
+          text: expect.stringContaining(
+            'https://www.lifeistravel.io/review/res_abc?token=tok',
+          ),
+        }),
+      );
     });
   });
 });
