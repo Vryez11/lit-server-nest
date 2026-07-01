@@ -29,5 +29,6 @@ import { ReservationStorageService } from './services/reservation-storage.servic
     ReservationStatusService,
     ReservationStorageService,
   ],
+  exports: [ReservationStorageService],
 })
 export class ReservationsModule {}

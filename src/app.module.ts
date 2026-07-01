@@ -18,6 +18,7 @@ import { StoragesModule } from './modules/storages/storages.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { OwnerActionsModule } from './modules/owner-actions/owner-actions.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     FeedbacksModule,
     NotificationsModule,
     UploadsModule,
+    OwnerActionsModule,
   ],
 })
 export class AppModule {}

@@ -2,6 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SolapiMessageService } from 'solapi';
 
+export interface CheckoutNotificationData {
+  reservationId: string;
+  storeName: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string | null;
+  locale: string;
+  /** 프로토콜 없는 리뷰 URL — 알림톡 변수(https:// 고정)와 공유 */
+  reviewPath: string;
+}
+
 export interface CreateNotificationData {
   reservationId: string;
   storeName: string;
@@ -633,6 +644,12 @@ export class NotificationsService {
         err,
       });
     }
+  }
+
+  /** 점주 체크아웃 시 고객 리뷰 요청. Task 6에서 채널 분기 구현 예정. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async sendCheckoutNotification(_data: CheckoutNotificationData): Promise<void> {
+    this.logger.debug('sendCheckoutNotification 스텁 — Task 6에서 구현');
   }
 
   // ═══════════════════════════════════════════════════════════════════
