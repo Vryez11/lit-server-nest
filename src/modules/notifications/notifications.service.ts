@@ -36,6 +36,15 @@ export interface PhotosNotificationData {
   photoUrls: string[];
 }
 
+export interface ReviewCreatedNotificationData {
+  reviewId: string;
+  storeName: string;
+  customerName: string;
+  rating: number;
+  comment: string;
+  photoUrls: string[];
+}
+
 export interface CancelNotificationData {
   reservationId: string;
   customerPhone: string;
@@ -812,6 +821,72 @@ export class NotificationsService {
         err,
       });
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 짐 사진 알림
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 리뷰 생성 알림
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * 리뷰 생성 시 Discord embed를 발송합니다.
+   * 실패 시 throw — 호출자의 .catch()가 처리합니다.
+   */
+  async sendReviewCreatedNotification(
+    data: ReviewCreatedNotificationData,
+  ): Promise<void> {
+    const webhookUrl = this.configService.get<string>(
+      'DISCORD_RESERVATION_WEBHOOK_URL',
+    );
+    if (!webhookUrl) {
+      this.logger.debug(
+        'DISCORD_RESERVATION_WEBHOOK_URL 미설정 — 리뷰 Discord 알림 스킵',
+      );
+      return;
+    }
+
+    const { rating, storeName, customerName, comment, photoUrls } = data;
+
+    const photoLinks =
+      photoUrls.length > 0
+        ? photoUrls.map((url, i) => `[사진 ${i + 1}](${url})`).join('\n')
+        : null;
+
+    const embed: Record<string, unknown> = {
+      title: `⭐ 새 리뷰 (${rating}/5) — ${storeName}`,
+      color: 0xf59e0b,
+      fields: [
+        { name: '작성자', value: customerName || '(알 수 없음)', inline: true },
+        { name: '별점', value: '⭐'.repeat(rating), inline: true },
+        { name: '내용', value: comment.slice(0, 1000) },
+        ...(photoLinks ? [{ name: '사진 링크', value: photoLinks }] : []),
+      ],
+      timestamp: new Date().toISOString(),
+    };
+
+    if (photoUrls[0]) {
+      embed.image = { url: photoUrls[0] };
+    }
+
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Discord webhook 실패 (리뷰): ${res.status} ${res.statusText}`,
+      );
+    }
+
+    this.logger.log({
+      event: 'notifications.discord_review_sent',
+      reviewId: data.reviewId,
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════

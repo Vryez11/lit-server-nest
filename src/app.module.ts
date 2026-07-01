@@ -20,6 +20,7 @@ import { StoresModule } from './modules/stores/stores.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { OwnerActionsModule } from './modules/owner-actions/owner-actions.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { OwnerActionsModule } from './modules/owner-actions/owner-actions.module
     NotificationsModule,
     UploadsModule,
     OwnerActionsModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}
