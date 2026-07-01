@@ -10,6 +10,7 @@ import { StoreAuthGuard } from '../auth/guards/store-auth.guard';
 import { CurrentCustomerId } from '../auth/decorators/current-customer.decorator';
 import { CurrentStoreId } from '../auth/decorators/current-store.decorator';
 import {
+  GuestPresignUploadRequestDto,
   PresignUploadRequestDto,
   PresignUploadResponseDto,
 } from './dto/presign-upload.dto';
@@ -39,6 +40,25 @@ export class UploadsController {
     @Body() dto: PresignUploadRequestDto,
   ): Promise<PresignUploadResponseDto> {
     return this.uploadsService.presign(storeId ?? 'unknown_store', dto);
+  }
+
+  /**
+   * 비회원(게스트)용 presigned PUT URL 발급.
+   * 인증 없이 호출 가능하며, reservations/ 폴더만 허용합니다.
+   */
+  @Post('api/guest/uploads/presign')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: '(비회원용) R2 presigned PUT URL 발급',
+    description:
+      '비회원이 짐 사진을 직접 Cloudflare R2에 업로드할 수 있는 PUT presigned URL을 발급합니다. ' +
+      'reservations/ 폴더만 허용됩니다. URL은 5분간 유효합니다.',
+  })
+  @ApiCreatedResponse({ type: PresignUploadResponseDto })
+  presignForGuest(
+    @Body() dto: GuestPresignUploadRequestDto,
+  ): Promise<PresignUploadResponseDto> {
+    return this.uploadsService.presign('guest', dto);
   }
 
   /**

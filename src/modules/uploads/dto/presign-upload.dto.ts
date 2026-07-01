@@ -56,6 +56,43 @@ export class PresignUploadRequestDto {
   contentType!: AllowedContentType;
 }
 
+export class GuestPresignUploadRequestDto {
+  /**
+   * 업로드 대상 폴더입니다. 비회원 업로드는 reservations/ 폴더만 허용됩니다.
+   * 예: "reservations/2026-07", "reservations/photos"
+   */
+  @ApiProperty({
+    description: '업로드 대상 폴더. reservations/ 로 시작해야 합니다.',
+    example: 'reservations/2026-07',
+  })
+  @IsString()
+  @MaxLength(200)
+  @Matches(/^reservations\//, {
+    message: 'folder는 reservations/ 로 시작해야 합니다.',
+  })
+  folder!: string;
+
+  /**
+   * 원본 파일명입니다. objectKey 생성 시 ext 추출에만 사용됩니다.
+   */
+  @ApiProperty({
+    description: '원본 파일명 (확장자 추출에 사용됩니다).',
+    example: 'luggage.jpg',
+  })
+  @IsString()
+  @MaxLength(255)
+  fileName!: string;
+
+  @ApiProperty({
+    description: '업로드할 파일의 Content-Type.',
+    enum: ALLOWED_CONTENT_TYPES,
+  })
+  @IsIn(ALLOWED_CONTENT_TYPES, {
+    message: `contentType은 ${ALLOWED_CONTENT_TYPES.join(', ')} 중 하나여야 합니다.`,
+  })
+  contentType!: AllowedContentType;
+}
+
 export class PresignUploadResponseDto {
   @ApiProperty({
     description: '파일을 직접 PUT 업로드할 수 있는 presigned URL (유효 5분).',
