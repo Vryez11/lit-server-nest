@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { reservations_status } from '@prisma/client';
+import {
+  reservations_payment_status,
+  reservations_status,
+} from '@prisma/client';
 import { OwnerActionsService } from './owner-actions.service';
 
 const createService = () => {
@@ -73,6 +76,69 @@ describe('OwnerActionsService', () => {
       }),
     );
     expect(result.status).toBe(reservations_status.in_progress);
+  });
+
+  it('checkIn marks a pending-payment (현장결제) group as paid', async () => {
+    const { service, tx } = createService();
+    const row = {
+      ...baseRow,
+      payment_status: reservations_payment_status.pending,
+    };
+    tx.reservations.findFirst.mockResolvedValue(row);
+    tx.reservations.findMany.mockResolvedValue([row]);
+
+    await service.checkIn('res_1');
+
+    expect(tx.reservations.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payment_status: reservations_payment_status.paid,
+        }),
+      }),
+    );
+  });
+
+  it('checkIn leaves an already-paid (온라인 결제) group untouched', async () => {
+    const { service, tx } = createService();
+    const row = {
+      ...baseRow,
+      payment_status: reservations_payment_status.paid,
+    };
+    tx.reservations.findFirst.mockResolvedValue(row);
+    tx.reservations.findMany.mockResolvedValue([row]);
+
+    await service.checkIn('res_1');
+
+    expect(tx.reservations.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          payment_status: expect.anything(),
+        }),
+      }),
+    );
+  });
+
+  it('checkOut marks a pending-payment group as paid (체크인 생략 케이스)', async () => {
+    const { service, prisma, tx } = createService();
+    const row = {
+      ...baseRow,
+      status: reservations_status.confirmed,
+      payment_status: reservations_payment_status.pending,
+    };
+    tx.reservations.findFirst.mockResolvedValue(row);
+    tx.reservations.findMany.mockResolvedValue([row]);
+    prisma.stores.findFirst.mockResolvedValue({ business_name: '테스트 매장' });
+
+    await service.checkOut('res_1');
+
+    expect(tx.reservations.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: reservations_status.completed,
+          payment_status: reservations_payment_status.paid,
+        }),
+      }),
+    );
   });
 
   it('checkIn rejects a reservation that is not confirmed', async () => {

@@ -4,7 +4,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, reservations, reservations_status } from '@prisma/client';
+import {
+  Prisma,
+  reservations,
+  reservations_payment_status,
+  reservations_status,
+} from '@prisma/client';
 import { PrismaService } from '../../common/database/prisma.service';
 import { maskCustomerName } from '../../common/transformers/mask-name.util';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -59,9 +64,14 @@ export class OwnerActionsService {
     const { result } = await this.transitionInTx(
       reservationId,
       CHECK_IN_FROM,
-      () => ({
+      (rep) => ({
         status: reservations_status.in_progress,
         actual_start_time: new Date(),
+        // 현장결제는 짐 인수(체크인) 시점에 결제 수령으로 간주 — 대시보드
+        // 매출 집계(payment_status=paid 필터) 기준. 온라인 결제 건은 이미 paid.
+        ...(rep.payment_status === reservations_payment_status.pending
+          ? { payment_status: reservations_payment_status.paid }
+          : {}),
         updated_at: new Date(),
       }),
       { releaseStorage: false },
@@ -79,6 +89,10 @@ export class OwnerActionsService {
         status: reservations_status.completed,
         actual_start_time: rep.actual_start_time ?? now,
         actual_end_time: now,
+        // 체크인 생략 후 바로 체크아웃한 케이스도 현장결제 수령으로 간주.
+        ...(rep.payment_status === reservations_payment_status.pending
+          ? { payment_status: reservations_payment_status.paid }
+          : {}),
         updated_at: now,
       }),
       { releaseStorage: true },
