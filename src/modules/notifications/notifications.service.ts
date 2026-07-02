@@ -1,6 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SolapiMessageService } from 'solapi';
+import { MailService } from '../auth/services/mail.service';
+import { createOwnerActionToken } from '../owner-actions/owner-action-token.util';
+
+export interface CheckoutNotificationData {
+  reservationId: string;
+  storeName: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string | null;
+  locale: string;
+  /** 프로토콜 없는 리뷰 URL — 알림톡 변수(https:// 고정)와 공유 */
+  reviewPath: string;
+}
 
 export interface CreateNotificationData {
   reservationId: string;
@@ -21,6 +34,15 @@ export interface CreateNotificationData {
 export interface PhotosNotificationData {
   reservationId: string;
   storeName: string;
+  photoUrls: string[];
+}
+
+export interface ReviewCreatedNotificationData {
+  reviewId: string;
+  storeName: string;
+  customerName: string;
+  rating: number;
+  comment: string;
   photoUrls: string[];
 }
 
@@ -200,11 +222,29 @@ const SMS_TEMPLATES: Record<
     `[LIT] 预订已确认！\n预订码: ${code}\n商店: ${store}\n地址: ${address}\n行李: ${luggage}\n寄存开始: ${start}\n取件时间: ${end}\n金额: ${amount}\n查询预订: ${url}\n祝您旅途愉快！✈️\n咨询: contact@lifeistravel.io`,
 };
 
+/** 체크아웃 리뷰 요청 SMS 템플릿 (알림톡 실패·해외번호 fallback) */
+const REVIEW_SMS_TEMPLATES: Record<
+  string,
+  (p: { store: string; url: string }) => string
+> = {
+  ko: ({ store, url }) =>
+    `[LIT] ${store}에서 짐을 찾아가신 것이 확인되었습니다.\n이용해 주셔서 감사합니다! 리뷰를 남겨주시면 다른 여행자에게 큰 도움이 됩니다.\n리뷰 남기기: ${url}`,
+  en: ({ store, url }) =>
+    `[LIT] Your luggage pickup at ${store} is confirmed.\nThanks for using LIT! A quick review helps fellow travelers.\nLeave a review: ${url}`,
+  ja: ({ store, url }) =>
+    `[LIT] ${store}でのお荷物のお引き取りを確認しました。\nご利用ありがとうございました！レビューが他の旅行者の助けになります。\nレビューを書く: ${url}`,
+  zh: ({ store, url }) =>
+    `[LIT] 已确认您在${store}取回行李。\n感谢使用LIT！您的评价将帮助其他旅行者。\n撰写评价: ${url}`,
+};
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly mailService: MailService,
+  ) {}
 
   /**
    * 예약 취소 시 Discord embed + 카카오 알림톡(점주)을 발송합니다.
@@ -463,6 +503,14 @@ export class NotificationsService {
         : '현장결제';
     const language = LOCALE_LABELS[data.locale] ?? data.locale;
 
+    const ownerActionSecret = this.configService.get<string>(
+      'OWNER_ACTION_SECRET',
+    );
+    // 템플릿에 버튼(변수)이 아직 없어도 미사용 변수는 무시되므로 항상 전달해도 안전
+    const actionUrl = ownerActionSecret
+      ? `www.lifeistravel.io/o/${data.reservationId}?t=${createOwnerActionToken(data.reservationId, ownerActionSecret)}`
+      : '';
+
     const client = new SolapiMessageService(apiKey, apiSecret);
 
     await client.send({
@@ -478,6 +526,7 @@ export class NotificationsService {
           '#{end_time}': endFormatted,
           '#{amount}': amount,
           '#{customer_language}': language,
+          '#{action_url}': actionUrl,
         },
       },
     });
@@ -633,6 +682,221 @@ export class NotificationsService {
         err,
       });
     }
+  }
+
+  /**
+   * 점주 체크아웃 시 고객 리뷰 요청.
+   * 한국번호+ko → 알림톡(실패 시 LMS), 이메일 예약 → 이메일, 해외번호 → 이메일 우선 LMS fallback.
+   * 채널 실패는 여기서 error 로그로 흡수하고 예외를 밖으로 던지지 않는다.
+   */
+  async sendCheckoutNotification(
+    data: CheckoutNotificationData,
+  ): Promise<void> {
+    const reviewUrl = `https://${data.reviewPath}`;
+
+    if (data.customerPhone.includes('@')) {
+      await this.sendReviewRequestEmailSafely(
+        data.customerEmail ?? data.customerPhone,
+        data,
+        reviewUrl,
+      );
+      return;
+    }
+
+    if (isKoreanPhone(data.customerPhone) && data.locale === 'ko') {
+      const sent = await this.sendCheckoutAlimtalk(data);
+      if (!sent) {
+        await this.sendReviewSms(data, reviewUrl);
+      }
+      return;
+    }
+
+    if (data.customerEmail) {
+      await this.sendReviewRequestEmailSafely(
+        data.customerEmail,
+        data,
+        reviewUrl,
+      );
+      return;
+    }
+    await this.sendReviewSms(data, reviewUrl);
+  }
+
+  private async sendReviewRequestEmailSafely(
+    email: string,
+    data: CheckoutNotificationData,
+    reviewUrl: string,
+  ): Promise<void> {
+    try {
+      await this.mailService.sendReviewRequestEmail(email, {
+        locale: data.locale,
+        storeName: data.storeName,
+        customerName: data.customerName,
+        reviewUrl,
+      });
+      this.logger.log({
+        event: 'notifications.review_email_sent',
+        reservationId: data.reservationId,
+        email,
+      });
+    } catch (err: unknown) {
+      this.logger.error({
+        event: 'notifications.channel_failed',
+        channel: 'review_email',
+        reservationId: data.reservationId,
+        err,
+      });
+    }
+  }
+
+  private async sendCheckoutAlimtalk(
+    data: CheckoutNotificationData,
+  ): Promise<boolean> {
+    const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
+    const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
+    const pfId = this.configService.get<string>('SOLAPI_KAKAO_PF_ID');
+    const templateId = this.configService.get<string>(
+      'SOLAPI_KAKAO_CHECKOUT_TEMPLATE_ID',
+    );
+
+    if (!apiKey || !apiSecret || !pfId || !templateId) {
+      this.logger.debug('체크아웃 알림톡 환경변수 미설정 — 알림톡 스킵');
+      return false;
+    }
+
+    try {
+      const client = new SolapiMessageService(apiKey, apiSecret);
+      await client.send({
+        to: normalizePhoneForSolapi(data.customerPhone),
+        kakaoOptions: {
+          pfId,
+          templateId,
+          variables: {
+            '#{store_name}': data.storeName,
+            '#{review_url}': data.reviewPath,
+          },
+        },
+      });
+
+      this.logger.log({
+        event: 'notifications.kakao_checkout_sent',
+        reservationId: data.reservationId,
+      });
+      return true;
+    } catch (err: unknown) {
+      this.logger.warn({
+        event: 'notifications.kakao_checkout_failed',
+        err,
+      });
+      return false;
+    }
+  }
+
+  private async sendReviewSms(
+    data: CheckoutNotificationData,
+    reviewUrl: string,
+  ): Promise<void> {
+    const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
+    const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
+    const senderPhone = this.configService.get<string>('SOLAPI_SENDER_PHONE');
+
+    if (!apiKey || !apiSecret || !senderPhone) {
+      this.logger.debug('SOLAPI_SENDER_PHONE 미설정 — 리뷰 SMS 스킵');
+      return;
+    }
+
+    const template =
+      REVIEW_SMS_TEMPLATES[data.locale] ?? REVIEW_SMS_TEMPLATES.en;
+    const text = template({ store: data.storeName, url: reviewUrl });
+
+    try {
+      const client = new SolapiMessageService(apiKey, apiSecret);
+      await client.send({
+        to: normalizePhoneForSolapi(data.customerPhone),
+        from: senderPhone,
+        text,
+        type: 'LMS',
+      });
+
+      this.logger.log({
+        event: 'notifications.review_sms_sent',
+        reservationId: data.reservationId,
+        locale: data.locale,
+      });
+    } catch (err: unknown) {
+      this.logger.error({
+        event: 'notifications.channel_failed',
+        channel: 'review_sms',
+        reservationId: data.reservationId,
+        err,
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 짐 사진 알림
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 리뷰 생성 알림
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * 리뷰 생성 시 Discord embed를 발송합니다.
+   * 실패 시 throw — 호출자의 .catch()가 처리합니다.
+   */
+  async sendReviewCreatedNotification(
+    data: ReviewCreatedNotificationData,
+  ): Promise<void> {
+    const webhookUrl = this.configService.get<string>(
+      'DISCORD_RESERVATION_WEBHOOK_URL',
+    );
+    if (!webhookUrl) {
+      this.logger.debug(
+        'DISCORD_RESERVATION_WEBHOOK_URL 미설정 — 리뷰 Discord 알림 스킵',
+      );
+      return;
+    }
+
+    const { rating, storeName, customerName, comment, photoUrls } = data;
+
+    const photoLinks =
+      photoUrls.length > 0
+        ? photoUrls.map((url, i) => `[사진 ${i + 1}](${url})`).join('\n')
+        : null;
+
+    const embed: Record<string, unknown> = {
+      title: `⭐ 새 리뷰 (${rating}/5) — ${storeName}`,
+      color: 0xf59e0b,
+      fields: [
+        { name: '작성자', value: customerName || '(알 수 없음)', inline: true },
+        { name: '별점', value: '⭐'.repeat(rating), inline: true },
+        { name: '내용', value: comment.slice(0, 1000) },
+        ...(photoLinks ? [{ name: '사진 링크', value: photoLinks }] : []),
+      ],
+      timestamp: new Date().toISOString(),
+    };
+
+    if (photoUrls[0]) {
+      embed.image = { url: photoUrls[0] };
+    }
+
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Discord webhook 실패 (리뷰): ${res.status} ${res.statusText}`,
+      );
+    }
+
+    this.logger.log({
+      event: 'notifications.discord_review_sent',
+      reviewId: data.reviewId,
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════════

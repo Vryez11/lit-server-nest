@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { PrismaModule } from './common/database/prisma.module';
 import { envValidationSchema } from './config/env.validation';
@@ -18,6 +19,8 @@ import { StoragesModule } from './modules/storages/storages.module';
 import { StoresModule } from './modules/stores/stores.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { OwnerActionsModule } from './modules/owner-actions/owner-actions.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 
 @Module({
   imports: [
@@ -35,6 +38,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
       inject: [ConfigService],
       useFactory: createLoggerParams,
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     R2StorageModule,
     AddressesModule,
@@ -50,6 +54,8 @@ import { UploadsModule } from './modules/uploads/uploads.module';
     FeedbacksModule,
     NotificationsModule,
     UploadsModule,
+    OwnerActionsModule,
+    ReviewsModule,
   ],
 })
 export class AppModule {}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ConfigService } from '@nestjs/config';
 import {
   CancelNotificationData,
@@ -5,12 +6,22 @@ import {
   NotificationsService,
 } from './notifications.service';
 
+const solapiSendMock = jest.fn().mockResolvedValue(undefined);
+jest.mock('solapi', () => ({
+  SolapiMessageService: jest.fn().mockImplementation(() => ({
+    send: solapiSendMock,
+  })),
+}));
+
 const createService = (config: Record<string, string>) => {
   const configService = {
     get: jest.fn((key: string) => config[key]),
   } as unknown as ConfigService;
+  const mailService = {
+    sendReviewRequestEmail: jest.fn().mockResolvedValue(undefined),
+  };
 
-  const service = new NotificationsService(configService);
+  const service = new NotificationsService(configService, mailService as never);
   const errorSpy = jest
     .spyOn(
       (
@@ -22,7 +33,7 @@ const createService = (config: Record<string, string>) => {
     )
     .mockImplementation(() => undefined);
 
-  return { service, errorSpy };
+  return { service, mailService, errorSpy };
 };
 
 const cancelData: CancelNotificationData = {
@@ -51,9 +62,61 @@ const createData: CreateNotificationData = {
   locale: 'ko',
 };
 
+const checkoutData = {
+  reservationId: 'res_abc-123456',
+  storeName: '테스트 매장',
+  customerName: '홍길동',
+  customerPhone: '01012345678',
+  customerEmail: null as string | null,
+  locale: 'ko',
+  reviewPath: 'www.lifeistravel.io/review/res_abc?token=tok',
+};
+
 describe('NotificationsService', () => {
+  beforeEach(() => {
+    solapiSendMock.mockClear();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('includes a signed owner action url in the create alimtalk when the secret is configured', async () => {
+    const { service } = createService({
+      SOLAPI_API_KEY: 'k',
+      SOLAPI_API_SECRET: 's',
+      SOLAPI_KAKAO_PF_ID: 'pf',
+      SOLAPI_KAKAO_TEMPLATE_ID: 'tmpl',
+      OWNER_ACTION_SECRET: 'test-secret-at-least-32-characters!!',
+    });
+
+    await service.sendCreateNotification({
+      reservationId: 'res_abc',
+      storeName: '테스트 매장',
+      storeAddress: '서울',
+      ownerPhone: '01099998888',
+      customerName: '홍길동',
+      customerPhone: '01012345678',
+      luggageItems: [{ type: 's', count: 1 }],
+      startTime: new Date(),
+      endTime: new Date(),
+      duration: 4,
+      totalAmount: 4500,
+      locale: 'ko',
+    });
+
+    type SolapiSendArg = {
+      kakaoOptions?: {
+        templateId?: string;
+        variables?: Record<string, string>;
+      };
+    };
+    const ownerCall = (solapiSendMock.mock.calls as [SolapiSendArg][]).find(
+      (call) => call[0]?.kakaoOptions?.templateId === 'tmpl',
+    );
+    expect(ownerCall?.[0].kakaoOptions?.variables?.['#{action_url}']).toMatch(
+      /^www\.lifeistravel\.io\/o\/res_abc\?t=[A-Za-z0-9_-]+$/,
+    );
   });
 
   it('logs an error when a cancel notification channel fails', async () => {
@@ -114,5 +177,73 @@ describe('NotificationsService', () => {
     await service.sendCancelNotification(cancelData);
 
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  describe('sendCheckoutNotification', () => {
+    it('sends the review-request email when the guest booked with an email address', async () => {
+      const { service, mailService } = createService({});
+
+      await service.sendCheckoutNotification({
+        ...checkoutData,
+        customerPhone: 'guest@example.com',
+        customerEmail: 'guest@example.com',
+        locale: 'en',
+      });
+
+      expect(mailService.sendReviewRequestEmail).toHaveBeenCalledWith(
+        'guest@example.com',
+        expect.objectContaining({
+          locale: 'en',
+          storeName: '테스트 매장',
+          reviewUrl: 'https://www.lifeistravel.io/review/res_abc?token=tok',
+        }),
+      );
+    });
+
+    it('prefers email over LMS for a foreign phone number with an email on file', async () => {
+      const { service, mailService } = createService({});
+
+      await service.sendCheckoutNotification({
+        ...checkoutData,
+        customerPhone: '+14155550123',
+        customerEmail: 'traveler@example.com',
+        locale: 'en',
+      });
+
+      expect(mailService.sendReviewRequestEmail).toHaveBeenCalledWith(
+        'traveler@example.com',
+        expect.anything(),
+      );
+    });
+
+    it('skips silently when no solapi env and no email exist (korean phone)', async () => {
+      const { service, mailService, errorSpy } = createService({});
+
+      await service.sendCheckoutNotification(checkoutData);
+
+      expect(mailService.sendReviewRequestEmail).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to Korean LMS with the review URL when alimtalk env is absent but sender phone exists', async () => {
+      const { service } = createService({
+        SOLAPI_API_KEY: 'k',
+        SOLAPI_API_SECRET: 's',
+        SOLAPI_SENDER_PHONE: '0212345678',
+      });
+
+      await service.sendCheckoutNotification(checkoutData);
+
+      expect(solapiSendMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: '01012345678',
+          from: '0212345678',
+          type: 'LMS',
+          text: expect.stringContaining(
+            'https://www.lifeistravel.io/review/res_abc?token=tok',
+          ),
+        }),
+      );
+    });
   });
 });

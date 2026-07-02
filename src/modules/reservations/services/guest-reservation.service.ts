@@ -215,21 +215,26 @@ export class GuestReservationService {
     const ownerPhone = store.notification_phone ?? store.phone_number ?? '';
     const storeAddress = store.address ?? '';
     const totalAmount = amounts.reduce((sum, a) => sum + a, 0);
-    this.notificationsService.sendCreateNotification({
-      reservationId: representativeId,
-      storeName: toGuestStoreName(store),
-      storeAddress,
-      ownerPhone,
-      customerName: dto.customerName,
-      customerPhone: phoneNumber,
-      customerEmail: email ?? undefined,
-      luggageItems: items.map(i => ({ type: i.storageType, count: i.bagCount })),
-      startTime,
-      endTime,
-      duration: dto.duration,
-      totalAmount,
-      locale,
-    }).catch(err => this.logger.error('예약 생성 알림 실패', err));
+    this.notificationsService
+      .sendCreateNotification({
+        reservationId: representativeId,
+        storeName: toGuestStoreName(store),
+        storeAddress,
+        ownerPhone,
+        customerName: dto.customerName,
+        customerPhone: phoneNumber,
+        customerEmail: email ?? undefined,
+        luggageItems: items.map((i) => ({
+          type: i.storageType,
+          count: i.bagCount,
+        })),
+        startTime,
+        endTime,
+        duration: dto.duration,
+        totalAmount,
+        locale,
+      })
+      .catch((err) => this.logger.error('예약 생성 알림 실패', err));
 
     return {
       reservation,
@@ -493,7 +498,13 @@ export class GuestReservationService {
       }
 
       const result = await tx.reservations.updateMany({
-        where: { id: { in: expiring.map((row) => row.id) } },
+        where: {
+          id: { in: expiring.map((row) => row.id) },
+          status: {
+            in: [reservations_status.pending, reservations_status.confirmed],
+          },
+          payment_status: reservations_payment_status.pending,
+        },
         data: {
           status: reservations_status.cancelled,
           updated_at: new Date(),
@@ -610,8 +621,7 @@ export class GuestReservationService {
     });
 
     // 알림 수신 번호: notification_phone 우선, 없으면 phone_number 사용
-    const ownerPhone =
-      store?.notification_phone ?? store?.phone_number ?? '';
+    const ownerPhone = store?.notification_phone ?? store?.phone_number ?? '';
 
     this.notificationsService
       .sendCancelNotification({
@@ -624,9 +634,7 @@ export class GuestReservationService {
         startTime: representative.start_time,
         cancelledCount: memberCount,
       })
-      .catch((err: unknown) =>
-        this.logger.error('취소 알림 발송 실패', err),
-      );
+      .catch((err: unknown) => this.logger.error('취소 알림 발송 실패', err));
 
     return result;
   }
@@ -707,7 +715,8 @@ export class GuestReservationService {
     if (!hasPhone && !hasEmail) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
-        message: '본인 확인을 위해 customerPhone 또는 customerEmail이 필요합니다.',
+        message:
+          '본인 확인을 위해 customerPhone 또는 customerEmail이 필요합니다.',
       });
     }
 
@@ -759,11 +768,13 @@ export class GuestReservationService {
       where: { id: reservation.store_id },
       select: { business_name: true },
     });
-    this.notificationsService.sendPhotosNotification({
-      reservationId,
-      storeName: storeInfo?.business_name ?? '',
-      photoUrls: merged,
-    }).catch(err => this.logger.error('짐 사진 알림 실패', err));
+    this.notificationsService
+      .sendPhotosNotification({
+        reservationId,
+        storeName: storeInfo?.business_name ?? '',
+        photoUrls: merged,
+      })
+      .catch((err) => this.logger.error('짐 사진 알림 실패', err));
 
     return { id: reservationId, luggageImageUrls: merged };
   }

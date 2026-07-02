@@ -59,4 +59,10 @@ export const envValidationSchema = Joi.object({
   CF_R2_SECRET_ACCESS_KEY: Joi.string().required(),
   // 버킷 Public Access 활성화 시 설정 (예: https://pub-xxxx.r2.dev)
   CF_R2_PUBLIC_URL: Joi.string().uri().optional(),
+
+  // 점주 액션 링크(HMAC) 서명 비밀키. 미설정 시 owner-actions 엔드포인트 전체 401 잠금.
+  OWNER_ACTION_SECRET: Joi.string().min(32).optional(),
+
+  // 고객 이용완료(체크아웃) 알림톡 템플릿. 미설정 시 알림톡 채널 스킵.
+  SOLAPI_KAKAO_CHECKOUT_TEMPLATE_ID: Joi.string().optional(),
 });

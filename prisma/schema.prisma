@@ -396,7 +396,7 @@ model reviews {
   @@index([rating], map: "idx_rating")
   @@index([store_id, status], map: "idx_store_status")
   @@index([store_id, type], map: "idx_store_type")
-  @@index([reservation_id], map: "reservation_id")
+  @@unique([reservation_id], map: "uniq_review_reservation")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -852,6 +852,7 @@ enum reservations_status {
   in_progress
   completed
   cancelled
+  no_show
 }
 
 enum coupon_policies_auto_issue_on {
