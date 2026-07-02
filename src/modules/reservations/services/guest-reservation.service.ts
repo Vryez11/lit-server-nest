@@ -30,6 +30,8 @@ import {
   GuestReservationListResponseDto,
   GuestReservationResponseDto,
   ListGuestReservationsQueryDto,
+  PatchLuggagePhotosDto,
+  PatchLuggagePhotosResponseDto,
 } from '../dto/guest-reservation.dto';
 import {
   GuestReservationWithStore,
@@ -41,6 +43,7 @@ import { normalizeReservationLocale } from '../reservation.constants';
 import { normalizeStorageAssignmentType } from '../pricing/reservation-pricing.constants';
 import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationStorageService } from './reservation-storage.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 const ALLOWED_STORAGE_TYPES = Object.values(
   reservations_requested_storage_type,
@@ -81,6 +84,7 @@ export class GuestReservationService {
     private readonly reservationStorageService: ReservationStorageService,
     private readonly reservationPricingService: ReservationPricingService,
     private readonly mailService: MailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async createReservation(
@@ -206,6 +210,26 @@ export class GuestReservationService {
     );
 
     await this.sendReservationCreatedEmailSafely(reservation);
+
+    // 알림 fan-out (fire-and-forget) — 실패해도 예약 결과에 영향 없음
+    const ownerPhone = store.notification_phone ?? store.phone_number ?? '';
+    const storeAddress = store.address ?? '';
+    const totalAmount = amounts.reduce((sum, a) => sum + a, 0);
+    this.notificationsService.sendCreateNotification({
+      reservationId: representativeId,
+      storeName: toGuestStoreName(store),
+      storeAddress,
+      ownerPhone,
+      customerName: dto.customerName,
+      customerPhone: phoneNumber,
+      customerEmail: email ?? undefined,
+      luggageItems: items.map(i => ({ type: i.storageType, count: i.bagCount })),
+      startTime,
+      endTime,
+      duration: dto.duration,
+      totalAmount,
+      locale,
+    }).catch(err => this.logger.error('예약 생성 알림 실패', err));
 
     return {
       reservation,
@@ -489,85 +513,122 @@ export class GuestReservationService {
   ): Promise<GuestReservationCancelResponseDto> {
     const contact = this.resolveCancelContact(dto);
 
-    return this.prisma.$transaction(async (tx) => {
-      const reservation = await tx.reservations.findFirst({
-        where: { id: reservationId },
-      });
-
-      if (!reservation) {
-        throw this.reservationNotFound();
-      }
-
-      if (!this.matchesGuestContact(reservation, contact)) {
-        throw new ForbiddenException({
-          code: 'FORBIDDEN',
-          message: '본인 예약만 취소할 수 있습니다.',
+    // 트랜잭션에서 알림에 필요한 데이터를 함께 반환합니다.
+    const { result, representative, memberCount } =
+      await this.prisma.$transaction(async (tx) => {
+        const reservation = await tx.reservations.findFirst({
+          where: { id: reservationId },
         });
-      }
 
-      // 부분 취소(부분 환불)는 지원하지 않으므로 그룹 전체를 한 번에 취소합니다.
-      const members = reservation.reservation_group_id
-        ? await tx.reservations.findMany({
-            where: {
-              reservation_group_id: reservation.reservation_group_id,
+        if (!reservation) {
+          throw this.reservationNotFound();
+        }
+
+        if (!this.matchesGuestContact(reservation, contact)) {
+          throw new ForbiddenException({
+            code: 'FORBIDDEN',
+            message: '본인 예약만 취소할 수 있습니다.',
+          });
+        }
+
+        // 부분 취소(부분 환불)는 지원하지 않으므로 그룹 전체를 한 번에 취소합니다.
+        const members = reservation.reservation_group_id
+          ? await tx.reservations.findMany({
+              where: {
+                reservation_group_id: reservation.reservation_group_id,
+              },
+            })
+          : [reservation];
+
+        const blockedItems = members.filter(
+          (member) =>
+            !member.status || !GUEST_CANCEL_STATUSES.includes(member.status),
+        );
+
+        if (blockedItems.length) {
+          throw new ConflictException({
+            code: 'NOT_CANCELLABLE',
+            message: '현재 상태에서는 취소할 수 없습니다.',
+            details: {
+              currentStatus: reservation.status,
+              blockedItems: blockedItems.map((member) => ({
+                id: member.id,
+                storageType: member.requested_storage_type,
+                status: member.status,
+              })),
             },
-          })
-        : [reservation];
+          });
+        }
 
-      const blockedItems = members.filter(
-        (member) =>
-          !member.status || !GUEST_CANCEL_STATUSES.includes(member.status),
-      );
+        if (reservation.start_time.getTime() <= Date.now()) {
+          throw new ConflictException({
+            code: 'TOO_LATE_TO_CANCEL',
+            message: '이미 시작된 예약은 취소할 수 없습니다.',
+            details: { startTime: reservation.start_time },
+          });
+        }
 
-      if (blockedItems.length) {
-        throw new ConflictException({
-          code: 'NOT_CANCELLABLE',
-          message: '현재 상태에서는 취소할 수 없습니다.',
-          details: {
-            currentStatus: reservation.status,
-            blockedItems: blockedItems.map((member) => ({
-              id: member.id,
-              storageType: member.requested_storage_type,
-              status: member.status,
-            })),
+        await tx.reservations.updateMany({
+          where: { id: { in: members.map((member) => member.id) } },
+          data: {
+            status: reservations_status.cancelled,
+            updated_at: new Date(),
           },
         });
-      }
 
-      if (reservation.start_time.getTime() <= Date.now()) {
-        throw new ConflictException({
-          code: 'TOO_LATE_TO_CANCEL',
-          message: '이미 시작된 예약은 취소할 수 없습니다.',
-          details: { startTime: reservation.start_time },
-        });
-      }
+        for (const member of members) {
+          await this.reservationStorageService.releaseStorageIfAny(
+            tx,
+            member.storage_id,
+          );
+        }
 
-      await tx.reservations.updateMany({
-        where: { id: { in: members.map((member) => member.id) } },
-        data: {
-          status: reservations_status.cancelled,
-          updated_at: new Date(),
-        },
+        const rep =
+          members.find((member) => member.id === member.reservation_group_id) ??
+          reservation;
+
+        return {
+          result: {
+            id: rep.id,
+            status: reservations_status.cancelled,
+            groupId: reservation.reservation_group_id ?? reservation.id,
+            cancelledCount: members.length,
+          },
+          representative: rep,
+          memberCount: members.length,
+        };
       });
 
-      for (const member of members) {
-        await this.reservationStorageService.releaseStorageIfAny(
-          tx,
-          member.storage_id,
-        );
-      }
-
-      const representative =
-        members.find((member) => member.id === member.reservation_group_id) ??
-        reservation;
-
-      return {
-        id: representative.id,
-        status: reservations_status.cancelled,
-        groupId: reservation.reservation_group_id ?? reservation.id,
-        cancelledCount: members.length,
-      };
+    // 트랜잭션 완료 후 알림 발송 (외부 HTTP 호출은 트랜잭션 바깥에서 처리)
+    const store = await this.prisma.stores.findFirst({
+      where: { id: representative.store_id },
+      select: {
+        business_name: true,
+        notification_phone: true,
+        phone_number: true,
+      },
     });
+
+    // 알림 수신 번호: notification_phone 우선, 없으면 phone_number 사용
+    const ownerPhone =
+      store?.notification_phone ?? store?.phone_number ?? '';
+
+    this.notificationsService
+      .sendCancelNotification({
+        reservationId: representative.id,
+        customerPhone: representative.customer_phone ?? '',
+        storeName: store?.business_name ?? '',
+        ownerPhone,
+        luggageType: representative.requested_storage_type ?? 's',
+        bagCount: representative.bag_count ?? 1,
+        startTime: representative.start_time,
+        cancelledCount: memberCount,
+      })
+      .catch((err: unknown) =>
+        this.logger.error('취소 알림 발송 실패', err),
+      );
+
+    return result;
   }
 
   async getAvailability(
@@ -625,6 +686,86 @@ export class GuestReservationService {
       duration: query.duration,
       items,
     };
+  }
+
+  async saveLuggagePhotos(
+    reservationId: string,
+    dto: PatchLuggagePhotosDto,
+  ): Promise<PatchLuggagePhotosResponseDto> {
+    const reservation = await this.prisma.reservations.findFirst({
+      where: { id: reservationId },
+    });
+
+    if (!reservation) {
+      throw this.reservationNotFound();
+    }
+
+    // 전화번호 또는 이메일 중 하나로 본인 확인
+    const hasPhone = Boolean(dto.customerPhone?.trim());
+    const hasEmail = Boolean(dto.customerEmail?.trim());
+
+    if (!hasPhone && !hasEmail) {
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '본인 확인을 위해 customerPhone 또는 customerEmail이 필요합니다.',
+      });
+    }
+
+    const contact = hasEmail
+      ? { email: this.normalizeEmail(dto.customerEmail) }
+      : { phoneNumber: this.normalizePhone(dto.customerPhone) };
+
+    if (!this.matchesGuestContact(reservation, contact)) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: '본인 예약에만 사진을 추가할 수 있습니다.',
+      });
+    }
+
+    // 예약 생성 후 24시간 이내인지 확인
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const createdAt = reservation.created_at;
+
+    if (createdAt && Date.now() - createdAt.getTime() > TWENTY_FOUR_HOURS_MS) {
+      throw new BadRequestException({
+        code: 'PHOTO_UPLOAD_WINDOW_EXPIRED',
+        message: '예약 생성 후 24시간 이내에만 짐 사진을 등록할 수 있습니다.',
+      });
+    }
+
+    // 기존 URL과 새 URL 병합 (최대 10개)
+    const MAX_PHOTOS = 10;
+    const existing = Array.isArray(reservation.luggage_image_urls)
+      ? (reservation.luggage_image_urls as string[])
+      : [];
+    const merged = [...existing, ...dto.photoUrls].slice(0, MAX_PHOTOS);
+
+    await this.prisma.reservations.update({
+      where: { id: reservationId },
+      data: {
+        luggage_image_urls: merged,
+        updated_at: new Date(),
+      },
+    });
+
+    this.logger.log({
+      event: 'guest_reservation.luggage_photos_saved',
+      reservationId,
+      count: merged.length,
+    });
+
+    // 짐 사진 Discord 알림 (fire-and-forget)
+    const storeInfo = await this.prisma.stores.findFirst({
+      where: { id: reservation.store_id },
+      select: { business_name: true },
+    });
+    this.notificationsService.sendPhotosNotification({
+      reservationId,
+      storeName: storeInfo?.business_name ?? '',
+      photoUrls: merged,
+    }).catch(err => this.logger.error('짐 사진 알림 실패', err));
+
+    return { id: reservationId, luggageImageUrls: merged };
   }
 
   normalizePhone(phone?: string | null): string {
@@ -759,6 +900,9 @@ export class GuestReservationService {
       select: {
         id: true,
         business_name: true,
+        address: true,
+        notification_phone: true,
+        phone_number: true,
       },
     });
 
