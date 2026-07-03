@@ -161,10 +161,17 @@ export class DashboardStatsService {
     return rows.find((row) => row.status === status)?._count._all ?? 0;
   }
 
+  /** 운영 중(available+occupied)만 합산 — maintenance는 점주가 설정에서 줄인 유휴분. */
   private sumStorageGroupCounts(
-    rows: Array<{ _count: { _all: number } }>,
+    rows: Array<{ status: storages_status | null; _count: { _all: number } }>,
   ): number {
-    return rows.reduce((sum, row) => sum + row._count._all, 0);
+    return rows
+      .filter(
+        (row) =>
+          row.status === storages_status.available ||
+          row.status === storages_status.occupied,
+      )
+      .reduce((sum, row) => sum + row._count._all, 0);
   }
 
   private getStorageGroupCount(

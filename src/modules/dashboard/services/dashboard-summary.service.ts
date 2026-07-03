@@ -81,7 +81,17 @@ export class DashboardSummaryService {
         },
         _sum: { total_amount: true },
       }),
-      this.prisma.storages.count({ where: { store_id: storeId } }),
+      // 총 보관함 = 운영 중인 것만 (available+occupied). 보관 설정에서 용량을
+      // 줄이면 초과분이 maintenance로 전환되는데, 이를 포함하면 점주가 설정한
+      // 개수와 대시보드 표시가 어긋난다 (2026-07-03 리포트).
+      this.prisma.storages.count({
+        where: {
+          store_id: storeId,
+          status: {
+            in: [storages_status.available, storages_status.occupied],
+          },
+        },
+      }),
       this.prisma.storages.count({
         where: {
           store_id: storeId,
