@@ -35,4 +35,13 @@ describe('CreateGuestReviewDto', () => {
     const errors = await validate(build({ rating: undefined }));
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('accepts an optional serviceRating within 1-5', async () => {
+    expect(await validate(build({ serviceRating: 4 }))).toHaveLength(0);
+  });
+
+  it('rejects a serviceRating outside 1-5', async () => {
+    const errors = await validate(build({ serviceRating: 6 }));
+    expect(errors.length).toBeGreaterThan(0);
+  });
 });
