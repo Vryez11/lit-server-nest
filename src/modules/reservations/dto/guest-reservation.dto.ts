@@ -390,7 +390,8 @@ export class PatchLuggagePhotosDto {
   customerPhone?: string;
 
   @ApiPropertyOptional({
-    description: '본인 확인용 이메일. customerPhone과 둘 중 하나를 제공해야 합니다.',
+    description:
+      '본인 확인용 이메일. customerPhone과 둘 중 하나를 제공해야 합니다.',
   })
   @IsOptional()
   @Transform(emptyToUndefined)

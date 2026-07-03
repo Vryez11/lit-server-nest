@@ -119,6 +119,64 @@ describe('NotificationsService', () => {
     );
   });
 
+  it('fans out the create alimtalk to additional owner recipients (dedup)', async () => {
+    const { service } = createService({
+      SOLAPI_API_KEY: 'k',
+      SOLAPI_API_SECRET: 's',
+      SOLAPI_KAKAO_PF_ID: 'pf',
+      SOLAPI_KAKAO_TEMPLATE_ID: 'tmpl',
+    });
+
+    await service.sendCreateNotification({
+      ...createData,
+      // 대표 번호와 같은 번호(표기만 다름) 1개 + 새 번호 2개 → 총 3명
+      additionalOwnerPhones: ['010-9999-8888', '01011112222', '01033334444'],
+    });
+
+    type SolapiSendArg = {
+      to?: string;
+      kakaoOptions?: { templateId?: string };
+    };
+    const ownerCalls = (solapiSendMock.mock.calls as [SolapiSendArg][]).filter(
+      (call) => call[0]?.kakaoOptions?.templateId === 'tmpl',
+    );
+    expect(ownerCalls.map((call) => call[0].to)).toEqual([
+      '01099998888',
+      '01011112222',
+      '01033334444',
+    ]);
+  });
+
+  it('fans out the cancel alimtalk and keeps sending when one recipient fails', async () => {
+    const { service } = createService({
+      SOLAPI_API_KEY: 'k',
+      SOLAPI_API_SECRET: 's',
+      SOLAPI_KAKAO_PF_ID: 'pf',
+      SOLAPI_KAKAO_CANCEL_TEMPLATE_ID: 'cancel-tmpl',
+    });
+    solapiSendMock
+      .mockRejectedValueOnce(new Error('첫 수신자 실패'))
+      .mockResolvedValue(undefined);
+
+    await service.sendCancelNotification({
+      ...cancelData,
+      additionalOwnerPhones: ['01011112222'],
+    });
+
+    type SolapiSendArg = {
+      to?: string;
+      kakaoOptions?: { templateId?: string };
+    };
+    const ownerCalls = (solapiSendMock.mock.calls as [SolapiSendArg][]).filter(
+      (call) => call[0]?.kakaoOptions?.templateId === 'cancel-tmpl',
+    );
+    // 첫 수신자 실패에도 두 번째 수신자 발송 시도
+    expect(ownerCalls.map((call) => call[0].to)).toEqual([
+      '01099998888',
+      '01011112222',
+    ]);
+  });
+
   it('logs an error when a cancel notification channel fails', async () => {
     const { service, errorSpy } = createService({
       DISCORD_RESERVATION_WEBHOOK_URL: 'https://discord.test/webhook',

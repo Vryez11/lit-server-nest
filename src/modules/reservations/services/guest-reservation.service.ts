@@ -75,6 +75,15 @@ type CapacityFailure = {
 
 const MAX_BAG_COUNT_PER_TYPE = 10;
 
+/** stores.notification_phones(Json) → 유효한 문자열 배열. 형식이 깨져 있으면 빈 배열. */
+const toPhoneArray = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (item): item is string =>
+          typeof item === 'string' && item.trim() !== '',
+      )
+    : [];
+
 @Injectable()
 export class GuestReservationService {
   private readonly logger = new Logger(GuestReservationService.name);
@@ -221,6 +230,7 @@ export class GuestReservationService {
         storeName: toGuestStoreName(store),
         storeAddress,
         ownerPhone,
+        additionalOwnerPhones: toPhoneArray(store.notification_phones),
         customerName: dto.customerName,
         customerPhone: phoneNumber,
         customerEmail: email ?? undefined,
@@ -616,6 +626,7 @@ export class GuestReservationService {
       select: {
         business_name: true,
         notification_phone: true,
+        notification_phones: true,
         phone_number: true,
       },
     });
@@ -629,6 +640,7 @@ export class GuestReservationService {
         customerPhone: representative.customer_phone ?? '',
         storeName: store?.business_name ?? '',
         ownerPhone,
+        additionalOwnerPhones: toPhoneArray(store?.notification_phones),
         luggageType: representative.requested_storage_type ?? 's',
         bagCount: representative.bag_count ?? 1,
         startTime: representative.start_time,
@@ -913,6 +925,7 @@ export class GuestReservationService {
         business_name: true,
         address: true,
         notification_phone: true,
+        notification_phones: true,
         phone_number: true,
       },
     });
