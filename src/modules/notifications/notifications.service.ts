@@ -20,6 +20,8 @@ export interface CreateNotificationData {
   storeName: string;
   storeAddress: string;
   ownerPhone: string;
+  /** 알림톡 추가 수신자 (stores.notification_phones) — 대표 번호와 중복 제거 후 발송 */
+  additionalOwnerPhones?: string[];
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
@@ -51,6 +53,8 @@ export interface CancelNotificationData {
   customerPhone: string;
   storeName: string;
   ownerPhone: string;
+  /** 알림톡 추가 수신자 (stores.notification_phones) — 대표 번호와 중복 제거 후 발송 */
+  additionalOwnerPhones?: string[];
   luggageType: string; // reservations_requested_storage_type 값
   bagCount: number;
   startTime: Date;
@@ -191,6 +195,23 @@ function normalizePhoneForSolapi(phone: string): string {
   return n.replace(/[^\d]/g, '');
 }
 
+/** 점주 알림 수신자 목록: 대표 번호 + 추가 수신자, 정규화 기준 중복 제거 */
+function ownerRecipients(
+  ownerPhone: string,
+  additionalOwnerPhones?: string[],
+): string[] {
+  const seen = new Set<string>();
+  const recipients: string[] = [];
+  for (const phone of [ownerPhone, ...(additionalOwnerPhones ?? [])]) {
+    const normalized = normalizePhoneForSolapi(phone ?? '');
+    // normalizePhoneForSolapi는 빈 문자열에 '0'을 붙이므로 실질 자릿수로 판별
+    if (normalized.length < 9 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    recipients.push(phone);
+  }
+  return recipients;
+}
+
 /** 예약 조회 URL 생성 */
 function buildLookupUrl(phone: string, locale: string): string {
   const prefix = locale === 'ko' ? '' : `/${locale}`;
@@ -260,6 +281,36 @@ export class NotificationsService {
       'discord',
       'kakao_owner',
     ]);
+  }
+
+  /** 점주 fan-out 결과 로깅 — 수신자별 실패는 warn, 성공 요약은 log. */
+  private logOwnerFanoutResults(
+    event: string,
+    reservationId: string,
+    recipients: string[],
+    results: PromiseSettledResult<unknown>[],
+  ): void {
+    let sentCount = 0;
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        this.logger.warn({
+          event: `${event}_failed`,
+          reservationId,
+          recipient: recipients[index],
+          err: result.reason as unknown,
+        });
+      } else {
+        sentCount += 1;
+      }
+    });
+    if (sentCount > 0) {
+      this.logger.log({
+        event,
+        reservationId,
+        recipientCount: recipients.length,
+        sentCount,
+      });
+    }
   }
 
   /** allSettled 결과 중 rejected 채널을 error 로그로 기록합니다. */
@@ -354,7 +405,11 @@ export class NotificationsService {
       return;
     }
 
-    if (!data.ownerPhone) {
+    const recipients = ownerRecipients(
+      data.ownerPhone,
+      data.additionalOwnerPhones,
+    );
+    if (recipients.length === 0) {
       this.logger.debug('ownerPhone 없음 — 카카오 취소 알림톡 스킵');
       return;
     }
@@ -366,26 +421,31 @@ export class NotificationsService {
 
     const client = new SolapiMessageService(apiKey, apiSecret);
 
-    await client.send({
-      to: data.ownerPhone,
-      kakaoOptions: {
-        pfId,
-        templateId,
-        variables: {
-          '#{reservation_code}': code,
-          '#{customer_contact}': data.customerPhone,
-          '#{luggage_list}': luggageList,
-          '#{start_time}': startFormatted,
-          '#{cancel_time}': cancelTime,
-        },
-      },
-    });
-
-    this.logger.log({
-      event: 'notifications.kakao_cancel_sent',
-      reservationId: data.reservationId,
-      ownerPhone: data.ownerPhone,
-    });
+    // 수신자별 개별 발송 — 한 명 실패해도 나머지는 시도
+    const results = await Promise.allSettled(
+      recipients.map((to) =>
+        client.send({
+          to,
+          kakaoOptions: {
+            pfId,
+            templateId,
+            variables: {
+              '#{reservation_code}': code,
+              '#{customer_contact}': data.customerPhone,
+              '#{luggage_list}': luggageList,
+              '#{start_time}': startFormatted,
+              '#{cancel_time}': cancelTime,
+            },
+          },
+        }),
+      ),
+    );
+    this.logOwnerFanoutResults(
+      'notifications.kakao_cancel_sent',
+      data.reservationId,
+      recipients,
+      results,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -488,7 +548,11 @@ export class NotificationsService {
       return;
     }
 
-    if (!data.ownerPhone) {
+    const recipients = ownerRecipients(
+      data.ownerPhone,
+      data.additionalOwnerPhones,
+    );
+    if (recipients.length === 0) {
       this.logger.debug('ownerPhone 없음 — 점주 예약 생성 알림톡 스킵');
       return;
     }
@@ -513,29 +577,35 @@ export class NotificationsService {
 
     const client = new SolapiMessageService(apiKey, apiSecret);
 
-    await client.send({
-      to: data.ownerPhone,
-      kakaoOptions: {
-        pfId,
-        templateId,
-        variables: {
-          '#{reservation_code}': code,
-          '#{customer_contact}': data.customerPhone,
-          '#{luggage_list}': luggageList,
-          '#{start_time}': startFormatted,
-          '#{end_time}': endFormatted,
-          '#{amount}': amount,
-          '#{customer_language}': language,
-          '#{action_url}': actionUrl,
-        },
-      },
-    });
-
-    this.logger.log({
-      event: 'notifications.kakao_create_owner_sent',
-      reservationId: data.reservationId,
-      ownerPhone: data.ownerPhone,
-    });
+    // 수신자별 개별 발송 — 한 명 실패해도 나머지는 시도.
+    // 추가 수신자(직원 등)도 체크인 액션 링크를 받아 예약을 처리할 수 있다.
+    const results = await Promise.allSettled(
+      recipients.map((to) =>
+        client.send({
+          to,
+          kakaoOptions: {
+            pfId,
+            templateId,
+            variables: {
+              '#{reservation_code}': code,
+              '#{customer_contact}': data.customerPhone,
+              '#{luggage_list}': luggageList,
+              '#{start_time}': startFormatted,
+              '#{end_time}': endFormatted,
+              '#{amount}': amount,
+              '#{customer_language}': language,
+              '#{action_url}': actionUrl,
+            },
+          },
+        }),
+      ),
+    );
+    this.logOwnerFanoutResults(
+      'notifications.kakao_create_owner_sent',
+      data.reservationId,
+      recipients,
+      results,
+    );
   }
 
   private async sendCustomerCreateNotification(
