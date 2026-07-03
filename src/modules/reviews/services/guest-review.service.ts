@@ -33,7 +33,11 @@ export class GuestReviewService {
   async createReview(
     dto: CreateGuestReviewDto,
   ): Promise<GuestReviewResponseDto> {
-    const { reservationId, token, rating, comment } = dto;
+    const { reservationId, token, rating } = dto;
+    // 텍스트 리뷰 선택 — 미입력 시 빈 문자열로 저장 (reviews.comment NOT NULL)
+    const comment = dto.comment ?? '';
+    // 매장 서비스·할인 별점 (선택) — 미이용 시 NULL
+    const serviceRating = dto.serviceRating ?? null;
     const photoUrls = dto.photoUrls ?? [];
 
     // Step 1: 예약 조회 (404)
@@ -107,6 +111,7 @@ export class GuestReviewService {
           reservation_id: representativeId,
           customer_name: maskedName,
           rating,
+          service_rating: serviceRating,
           comment,
           type: 'store',
           status: 'pending',
@@ -118,6 +123,7 @@ export class GuestReviewService {
         id: created.id,
         customerName: created.customer_name,
         rating: created.rating,
+        serviceRating: created.service_rating,
         comment: created.comment,
         photoUrls: (created.images as string[]) ?? [],
       };

@@ -383,6 +383,7 @@ model reviews {
   storage_number String?         @db.VarChar(50)
   type           reviews_type
   rating         Int
+  service_rating Int?
   comment        String          @db.Text
   images         Json?
   status         reviews_status? @default(pending)

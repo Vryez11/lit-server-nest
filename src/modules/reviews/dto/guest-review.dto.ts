@@ -10,7 +10,6 @@ import {
   Max,
   MaxLength,
   Min,
-  MinLength,
 } from 'class-validator';
 
 export class CreateGuestReviewDto {
@@ -27,14 +26,24 @@ export class CreateGuestReviewDto {
   @Max(5)
   rating!: number;
 
-  @ApiProperty({ minLength: 10, maxLength: 1000 })
+  // 매장 서비스·할인 별점 (선택) — 미이용/미평가 시 생략, NULL 저장
+  @ApiPropertyOptional({ minimum: 1, maximum: 5 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  serviceRating?: number;
+
+  // 텍스트 리뷰는 선택 — 별점만으로 제출 가능 (2026-07-03, 외국인 이탈 방지).
+  // 미입력 시 landing이 필드를 생략하고 DB에는 ''로 저장한다.
+  @ApiPropertyOptional({ maxLength: 1000 })
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MinLength(10)
   @MaxLength(1000)
-  comment!: string;
+  comment?: string;
 
   @ApiPropertyOptional({ type: [String], description: 'R2 공개 URL, 최대 3장' })
   @IsOptional()
@@ -48,6 +57,7 @@ export class GuestReviewResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() customerName!: string;
   @ApiProperty() rating!: number;
+  @ApiPropertyOptional() serviceRating?: number | null;
   @ApiProperty() comment!: string;
   @ApiProperty({ type: [String] }) photoUrls!: string[];
 }
