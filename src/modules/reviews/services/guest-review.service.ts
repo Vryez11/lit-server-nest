@@ -33,7 +33,9 @@ export class GuestReviewService {
   async createReview(
     dto: CreateGuestReviewDto,
   ): Promise<GuestReviewResponseDto> {
-    const { reservationId, token, rating, comment } = dto;
+    const { reservationId, token, rating } = dto;
+    // 텍스트 리뷰 선택 — 미입력 시 빈 문자열로 저장 (reviews.comment NOT NULL)
+    const comment = dto.comment ?? '';
     const photoUrls = dto.photoUrls ?? [];
 
     // Step 1: 예약 조회 (404)
