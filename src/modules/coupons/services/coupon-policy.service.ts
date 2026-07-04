@@ -66,6 +66,25 @@ export class CouponPolicyService {
     return policies.map(toCouponPolicyResponse);
   }
 
+  /**
+   * (공개) 매장이 발급 중인 매장 혜택 정책만 반환.
+   * 고객 노출용이므로 비활성 정책과 결제 할인 정책은 제외한다.
+   */
+  async listPublicPolicies(
+    storeId: string,
+  ): Promise<CouponPolicyResponseDto[]> {
+    const policies = await this.prisma.coupon_policies.findMany({
+      where: {
+        store_id: storeId,
+        enabled: 1,
+        type: coupon_policies_type.store_benefit,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return policies.map(toCouponPolicyResponse);
+  }
+
   async getPolicy(
     storeId: string,
     policyId: string,

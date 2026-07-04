@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { StoresModule } from '../stores/stores.module';
 import { CustomerCouponsController } from './customer-coupons.controller';
 import { GuestCouponsController } from './guest-coupons.controller';
+import { PublicCouponPoliciesController } from './public-coupon-policies.controller';
 import { StoreCouponPoliciesController } from './store-coupon-policies.controller';
 import { CouponAutoIssueService } from './services/coupon-auto-issue.service';
 import { CouponPolicyService } from './services/coupon-policy.service';
@@ -14,6 +15,7 @@ import { GuestCouponService } from './services/guest-coupon.service';
   controllers: [
     CustomerCouponsController,
     GuestCouponsController,
+    PublicCouponPoliciesController,
     StoreCouponPoliciesController,
   ],
   providers: [
