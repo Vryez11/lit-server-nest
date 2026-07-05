@@ -41,4 +41,20 @@ describe('CouponPolicyService', () => {
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('listPublicPolicies exposes only enabled store benefit policies', async () => {
+    const { service, prisma } = createService();
+    prisma.coupon_policies.findMany.mockResolvedValue([]);
+
+    await service.listPublicPolicies('store_1');
+
+    expect(prisma.coupon_policies.findMany).toHaveBeenCalledWith({
+      where: {
+        store_id: 'store_1',
+        enabled: 1,
+        type: coupon_policies_type.store_benefit,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  });
 });
