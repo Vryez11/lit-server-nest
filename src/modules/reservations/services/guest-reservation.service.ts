@@ -393,9 +393,15 @@ export class GuestReservationService {
       include: this.guestStoreInclude(),
     });
 
-    const items = this.groupReservations(reservations).map((rows) =>
-      toGuestReservationGroupResponse(rows),
-    );
+    const items = this.groupReservations(reservations).map((rows) => {
+      const dto = toGuestReservationGroupResponse(rows);
+      // 완료(점주 체크아웃) 예약에만 accessToken(qr_code) 포함 —
+      // 랜딩 예약 내역의 리뷰 작성 버튼이 /review/:id?token= 링크를 만들 수 있게.
+      // 활성 예약은 기존대로 미포함 (목록은 전화번호만으로 조회되므로 노출 최소화).
+      return dto.status === 'completed'
+        ? toGuestReservationGroupResponse(rows, { includeAccessToken: true })
+        : dto;
+    });
 
     return {
       items,

@@ -709,6 +709,10 @@ describe('GuestReservationService', () => {
     expect(result.items[0].status).toBe(reservations_status.pending);
     expect(result.items[1].id).toBe('res_legacy');
     expect(result.items[1].items).toHaveLength(1);
+    // accessToken(qr_code)은 완료 예약에만 포함 — 랜딩 예약 내역의 리뷰 버튼용.
+    // 활성 예약은 목록(전화번호 조회)에서 토큰 미노출 유지.
+    expect(result.items[0].accessToken).toBeUndefined();
+    expect(result.items[1].accessToken).toBe('token');
   });
 
   it('returns the merged group when fetched by a non-representative member id', async () => {
