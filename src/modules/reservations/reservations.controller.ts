@@ -26,6 +26,7 @@ import {
   ReservationResponseDto,
   ReservationStatusResponseDto,
   StoreCheckinDto,
+  UpdateLuggageOwnerMemoDto,
   UpdateReservationStatusDto,
 } from './dto/reservation.dto';
 // TODO(F-016): 아래 DTO 임포트는 lit-store 앱 배포 시 주석 해제
@@ -133,6 +134,21 @@ export class ReservationsController {
     @Body() dto: StoreCheckinDto,
   ) {
     return this.reservationCommandService.storeCheckin(storeId, id, dto);
+  }
+
+  @Put(':id/luggage-owner-memo')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '점주가 짐 확인 메모를 저장합니다.' })
+  setLuggageOwnerMemo(
+    @CurrentStoreId() storeId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateLuggageOwnerMemoDto,
+  ) {
+    return this.reservationCommandService.setLuggageOwnerMemo(
+      storeId,
+      id,
+      dto.memo,
+    );
   }
 
   // TODO(F-016): lit-store 앱 배포 시 아래 두 엔드포인트 주석 해제로 활성화

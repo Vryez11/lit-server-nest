@@ -333,6 +333,13 @@ export class StoreCheckinDto {
   photoUrls?: string[] = [];
 }
 
+export class UpdateLuggageOwnerMemoDto {
+  @ApiProperty({ maxLength: 500, description: '점주가 짐 확인 후 남기는 메모입니다.' })
+  @IsString()
+  @MaxLength(500)
+  memo!: string;
+}
+
 export class ReservationStatusResponseDto {
   @ApiProperty()
   id!: string;

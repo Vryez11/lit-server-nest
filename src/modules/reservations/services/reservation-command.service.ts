@@ -520,6 +520,28 @@ export class ReservationCommandService {
     return this.reservationStatusService.normalizeStatus(status);
   }
 
+  /**
+   * 점주가 짐 확인 후 남기는 메모를 저장한다.
+   * store_id로 소유권을 검증(다른 매장 예약은 수정 불가).
+   */
+  async setLuggageOwnerMemo(
+    storeId: string,
+    reservationId: string,
+    memo: string,
+  ): Promise<{ success: true }> {
+    const result = await this.prisma.reservations.updateMany({
+      where: { id: reservationId, store_id: storeId },
+      data: { luggage_owner_memo: memo, updated_at: new Date() },
+    });
+    if (result.count === 0) {
+      throw new NotFoundException({
+        code: 'RESERVATION_NOT_FOUND',
+        message: '예약을 찾을 수 없습니다.',
+      });
+    }
+    return { success: true };
+  }
+
   private addHours(date: Date, hours: number): Date {
     return new Date(date.getTime() + hours * 60 * 60 * 1000);
   }
