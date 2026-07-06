@@ -75,7 +75,8 @@ export class GuestReservationsController {
       uploadToken,
       files,
     );
-    return { success: true, data: { urls } };
+    // 전역 응답 인터셉터가 {success,data}로 감싼다 — 수동 래핑 금지(이중 래핑 버그 이력)
+    return { urls };
   }
 
   @Post('cleanup')
