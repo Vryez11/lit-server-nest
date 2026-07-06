@@ -169,6 +169,28 @@ export class CreateGuestReservationDto {
   @IsString()
   @MaxLength(100)
   order_id?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: '짐 사진 선업로드로 받은 R2 public URL들입니다 (선택, 최대 3장).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  luggageImageUrls?: string[];
+
+  @ApiPropertyOptional({ description: '짐 사진 업로드 묶음 토큰(R2 prefix)입니다.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  uploadToken?: string;
+
+  @ApiPropertyOptional({ description: '고객이 남긴 짐 메모입니다 (선택).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  luggageCustomerMemo?: string;
 }
 
 export class ListGuestReservationsQueryDto {

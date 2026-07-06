@@ -9,9 +9,13 @@ import {
   Post,
   Put,
   Query,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
+  ApiConsumes,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -19,6 +23,10 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthThrottlerGuard } from '../auth/guards/auth-throttler.guard';
+import {
+  LuggagePhotoService,
+  UploadedPhotoFile,
+} from './services/luggage-photo.service';
 import {
   CancelGuestReservationDto,
   CleanupExpiredGuestReservationsResponseDto,
@@ -43,6 +51,7 @@ import { GuestReservationService } from './services/guest-reservation.service';
 export class GuestReservationsController {
   constructor(
     private readonly guestReservationService: GuestReservationService,
+    private readonly luggagePhotoService: LuggagePhotoService,
   ) {}
 
   @Post()
@@ -50,6 +59,23 @@ export class GuestReservationsController {
   @ApiCreatedResponse({ type: CreateGuestReservationResponseDto })
   createReservation(@Body() dto: CreateGuestReservationDto) {
     return this.guestReservationService.createReservation(dto);
+  }
+
+  @Post('luggage-photos')
+  @UseInterceptors(FilesInterceptor('files', 3))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: '예약 생성 전 짐 사진을 업로드합니다 (uploadToken 묶음, R2 저장).',
+  })
+  async uploadLuggagePhotos(
+    @Body('uploadToken') uploadToken: string,
+    @UploadedFiles() files: UploadedPhotoFile[],
+  ) {
+    const urls = await this.luggagePhotoService.uploadForToken(
+      uploadToken,
+      files,
+    );
+    return { success: true, data: { urls } };
   }
 
   @Post('cleanup')

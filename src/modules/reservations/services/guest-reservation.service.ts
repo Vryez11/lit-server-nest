@@ -185,6 +185,15 @@ export class GuestReservationService {
           payment_id: index === 0 ? (payment?.id ?? null) : null,
           qr_code: accessToken,
           reservation_group_id: groupId,
+          // 짐 사진/메모는 그룹 대표 행(index 0)에만 저장 — 조회가 대표 기준.
+          luggage_image_urls:
+            index === 0 && dto.luggageImageUrls?.length
+              ? (dto.luggageImageUrls as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          luggage_upload_token:
+            index === 0 ? (dto.uploadToken ?? null) : null,
+          luggage_customer_memo:
+            index === 0 ? (dto.luggageCustomerMemo ?? null) : null,
           created_at: now,
           updated_at: now,
         })),

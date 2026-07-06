@@ -6,6 +6,7 @@ import { CustomerReservationsController } from './customer-reservations.controll
 import { GuestReservationsController } from './guest-reservations.controller';
 import { ReservationsController } from './reservations.controller';
 import { GuestReservationService } from './services/guest-reservation.service';
+import { LuggagePhotoService } from './services/luggage-photo.service';
 import { QrCheckinService } from './services/qr-checkin.service';
 import { ReservationCommandService } from './services/reservation-command.service';
 import { ReservationPricingService } from './pricing/reservation-pricing.service';
@@ -23,6 +24,7 @@ import { ReservationAutoCompleteService } from './services/reservation-auto-comp
   ],
   providers: [
     GuestReservationService,
+    LuggagePhotoService,
     QrCheckinService,
     ReservationPricingService,
     ReservationQueryService,
