@@ -267,6 +267,12 @@ export class OwnerActionsService {
         members.every(
           (member) => member.status && NO_SHOW_FROM.includes(member.status),
         ) && representative.start_time.getTime() <= Date.now(),
+      // 짐 사진/메모는 그룹 대표 행에 저장됨 (예약 생성 시 index 0)
+      luggageImageUrls: Array.isArray(representative.luggage_image_urls)
+        ? (representative.luggage_image_urls as string[])
+        : [],
+      luggageCustomerMemo: representative.luggage_customer_memo,
+      luggageOwnerMemo: representative.luggage_owner_memo,
     };
   }
 }
