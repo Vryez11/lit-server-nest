@@ -11,6 +11,7 @@ const CUSTOMER_STORE_BASE_SELECT = {
   address: true,
   latitude: true,
   longitude: true,
+  business_type: true,
   store_operating_hours: true,
   store_settings: true,
   _count: {

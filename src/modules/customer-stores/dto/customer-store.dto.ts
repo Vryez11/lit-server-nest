@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { stores_business_type } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsInt,
@@ -52,6 +53,9 @@ export class CustomerStoreResponseDto {
 
   @ApiPropertyOptional()
   longitude!: number | null;
+
+  @ApiPropertyOptional({ enum: stores_business_type })
+  businessType!: stores_business_type | null;
 
   @ApiProperty({ type: [Object] })
   reviews!: Record<string, unknown>[];
