@@ -877,7 +877,11 @@ enum payments_status {
 enum stores_business_type {
   RESTAURANT
   CAFE
+  CONVENIENCE_STORE
+  TRAIN_STATION
   HOTEL
+  SHOP
+  BEAUTY_SALON
   OTHER
 }
 
