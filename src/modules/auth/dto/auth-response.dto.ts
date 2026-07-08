@@ -19,6 +19,15 @@ export class StoreUserInfoDto {
   @ApiPropertyOptional({ nullable: true })
   storePhoneNumber: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  notificationPhone: string | null;
+
+  @ApiProperty({ type: [String] })
+  notificationPhones: string[];
+
+  @ApiPropertyOptional({ nullable: true })
+  profileImageUrl: string | null;
+
   @ApiProperty()
   wantsSmsNotification: boolean;
 

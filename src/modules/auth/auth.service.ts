@@ -453,6 +453,9 @@ export class AuthService {
         businessName: store.business_name,
         phoneNumber: store.phone_number,
         storePhoneNumber: store.store_phone_number,
+        notificationPhone: store.notification_phone,
+        notificationPhones: toStringArray(store.notification_phones),
+        profileImageUrl: store.profile_image_url,
         wantsSmsNotification: Boolean(store.wants_sms_notification),
         businessType: store.business_type ?? null,
         hasCompletedSetup: Boolean(store.has_completed_setup),
@@ -493,3 +496,10 @@ export class AuthService {
     return new Date(date.getTime() + minutes * 60_000);
   }
 }
+
+// notification_phones는 JSON 컬럼이라 문자열 배열로 정규화한다.
+// store-profile.mapper의 동일 헬퍼와 로직을 맞춘다.
+const toStringArray = (value: Prisma.JsonValue | null | undefined): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+};
