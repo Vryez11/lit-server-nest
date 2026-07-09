@@ -14,10 +14,11 @@ const createStore = (): stores => ({
   store_pin_locked_until: null,
   phone_number: '01012345678',
   store_phone_number: '050700000000',
-  notification_phone: null,
+  notification_phone: '01099998888',
+  notification_phones: ['01011112222', '01033334444'],
   wants_sms_notification: true,
   business_type: 'RESTAURANT',
-  profile_image_url: null,
+  profile_image_url: 'https://cdn.example.com/logo.png',
   has_completed_setup: false,
   business_number: '1234567890',
   business_name: '루라운지 혼술바',
@@ -148,6 +149,11 @@ describe('AuthService', () => {
         storeId: 'store_1',
         email: 'store@example.com',
         businessName: '루라운지 혼술바',
+        // 앱이 로컬 캐시를 로그인 응답으로 덮어써도 값이 유지되도록
+        // 알림 수신 번호·추가 수신자·로고가 반드시 포함되어야 한다.
+        notificationPhone: '01099998888',
+        notificationPhones: ['01011112222', '01033334444'],
+        profileImageUrl: 'https://cdn.example.com/logo.png',
       },
     });
   });
