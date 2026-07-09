@@ -17,6 +17,7 @@ export const toCustomerStoreResponse = (
   address: store.address,
   latitude: decimalToNumber(store.latitude),
   longitude: decimalToNumber(store.longitude),
+  businessType: store.business_type ?? null,
   reviews: camelize(store.reviews) as Record<string, unknown>[],
   operatingHours: store.store_operating_hours
     ? (camelize(store.store_operating_hours) as Record<string, unknown>)
