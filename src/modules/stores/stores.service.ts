@@ -65,13 +65,14 @@ export class StoresService {
           ? { store_phone_number: dto.storePhoneNumber.trim() }
           : {}),
         ...(dto.notificationPhone !== undefined
-          ? { notification_phone: dto.notificationPhone.trim() }
+          ? // 빈/공백 문자열은 NULL로 저장 — '' 저장 시 ?? 폴백이 무력화되던 근원 차단
+            { notification_phone: dto.notificationPhone.trim() || null }
           : {}),
         ...(dto.notificationPhones !== undefined
           ? {
               notification_phones: dto.notificationPhones
                 .map((p) => p.trim())
-                .filter(Boolean) as Prisma.InputJsonArray,
+                .filter(Boolean),
             }
           : {}),
         ...(dto.wantsSmsNotification !== undefined

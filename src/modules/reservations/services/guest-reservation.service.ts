@@ -17,6 +17,7 @@ import {
 } from '@prisma/client';
 import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
+import { resolveOwnerPhone } from '../../../common/transformers/resolve-owner-phone.util';
 import { MailService } from '../../auth/services/mail.service';
 import {
   CancelGuestReservationDto,
@@ -190,8 +191,7 @@ export class GuestReservationService {
             index === 0 && dto.luggageImageUrls?.length
               ? (dto.luggageImageUrls as Prisma.InputJsonValue)
               : Prisma.JsonNull,
-          luggage_upload_token:
-            index === 0 ? (dto.uploadToken ?? null) : null,
+          luggage_upload_token: index === 0 ? (dto.uploadToken ?? null) : null,
           luggage_customer_memo:
             index === 0 ? (dto.luggageCustomerMemo ?? null) : null,
           created_at: now,
@@ -230,7 +230,10 @@ export class GuestReservationService {
     await this.sendReservationCreatedEmailSafely(reservation);
 
     // 알림 fan-out (fire-and-forget) — 실패해도 예약 결과에 영향 없음
-    const ownerPhone = store.notification_phone ?? store.phone_number ?? '';
+    const ownerPhone = resolveOwnerPhone(
+      store.notification_phone,
+      store.phone_number,
+    );
     const storeAddress = store.address ?? '';
     const totalAmount = amounts.reduce((sum, a) => sum + a, 0);
     this.notificationsService
@@ -646,8 +649,11 @@ export class GuestReservationService {
       },
     });
 
-    // 알림 수신 번호: notification_phone 우선, 없으면 phone_number 사용
-    const ownerPhone = store?.notification_phone ?? store?.phone_number ?? '';
+    // 알림 수신 번호: notification_phone 우선, 비면(빈 문자열 포함) phone_number 폴백
+    const ownerPhone = resolveOwnerPhone(
+      store?.notification_phone,
+      store?.phone_number,
+    );
 
     this.notificationsService
       .sendCancelNotification({
