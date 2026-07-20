@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { reservations } from '@prisma/client';
 import { SolapiMessageService } from 'solapi';
+import { PrismaService } from '../../common/database/prisma.service';
 import { MailService } from '../auth/services/mail.service';
 import { createOwnerActionToken } from '../owner-actions/owner-action-token.util';
 
@@ -265,7 +267,56 @@ export class NotificationsService {
   constructor(
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * 체크아웃 완료된 예약의 고객 리뷰 요청 fan-out (fire-and-forget).
+   * 점주 웹 액션(owner-actions)과 점주앱(PUT /reservations/:id/status)이 공유한다.
+   * qr_code(리뷰 토큰) 없는 예약은 스킵하고, 실패는 로그로 흡수한다.
+   */
+  notifyCheckoutReview(
+    reservation: Pick<
+      reservations,
+      | 'id'
+      | 'store_id'
+      | 'customer_name'
+      | 'customer_phone'
+      | 'customer_email'
+      | 'locale'
+      | 'qr_code'
+    >,
+  ): void {
+    if (!reservation.qr_code) {
+      // 토큰 없는 리뷰 링크 발송 방지
+      this.logger.warn({
+        event: 'notifications.review_link_skipped',
+        reservationId: reservation.id,
+      });
+      return;
+    }
+    const qrCode = reservation.qr_code;
+
+    void (async () => {
+      const store = await this.prisma.stores.findFirst({
+        where: { id: reservation.store_id },
+        select: { business_name: true },
+      });
+      const localePrefix =
+        reservation.locale === 'ko' ? '' : `/${reservation.locale}`;
+      await this.sendCheckoutNotification({
+        reservationId: reservation.id,
+        storeName: store?.business_name ?? '',
+        customerName: reservation.customer_name,
+        customerPhone: reservation.customer_phone,
+        customerEmail: reservation.customer_email,
+        locale: reservation.locale,
+        reviewPath: `www.lifeistravel.io${localePrefix}/review/${reservation.id}?token=${qrCode}`,
+      });
+    })().catch((err: unknown) =>
+      this.logger.error('체크아웃 리뷰요청 발송 실패', err),
+    );
+  }
 
   /**
    * 예약 취소 시 Discord embed + 카카오 알림톡(점주)을 발송합니다.

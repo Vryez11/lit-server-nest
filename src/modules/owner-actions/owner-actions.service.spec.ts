@@ -23,7 +23,7 @@ const createService = () => {
     releaseStorageIfAny: jest.fn().mockResolvedValue(undefined),
   };
   const notificationsService = {
-    sendCheckoutNotification: jest.fn().mockResolvedValue(undefined),
+    notifyCheckoutReview: jest.fn(),
   };
   const service = new OwnerActionsService(
     prisma as never,
@@ -179,12 +179,12 @@ describe('OwnerActionsService', () => {
       tx,
       'storage_1',
     );
-    expect(notificationsService.sendCheckoutNotification).toHaveBeenCalledWith(
+    expect(notificationsService.notifyCheckoutReview).toHaveBeenCalledWith(
       expect.objectContaining({
-        reservationId: 'res_1',
-        customerPhone: '01012345678',
+        id: 'res_1',
+        customer_phone: '01012345678',
         locale: 'ko',
-        reviewPath: expect.stringContaining('/review/res_1?token=guest-token'),
+        qr_code: 'guest-token',
       }),
     );
     expect(result.status).toBe(reservations_status.completed);
@@ -229,9 +229,7 @@ describe('OwnerActionsService', () => {
     await expect(service.checkOut('res_1')).rejects.toMatchObject({
       response: { code: 'INVALID_TRANSITION' },
     });
-    expect(
-      notificationsService.sendCheckoutNotification,
-    ).not.toHaveBeenCalled();
+    expect(notificationsService.notifyCheckoutReview).not.toHaveBeenCalled();
   });
 
   it('throws INVALID_TRANSITION when the CAS update matches fewer rows than members (race lost)', async () => {
@@ -243,9 +241,7 @@ describe('OwnerActionsService', () => {
     await expect(service.checkOut('res_1')).rejects.toMatchObject({
       response: { code: 'INVALID_TRANSITION' },
     });
-    expect(
-      notificationsService.sendCheckoutNotification,
-    ).not.toHaveBeenCalled();
+    expect(notificationsService.notifyCheckoutReview).not.toHaveBeenCalled();
   });
 
   it('CAS updateMany filters by allowed statuses', async () => {

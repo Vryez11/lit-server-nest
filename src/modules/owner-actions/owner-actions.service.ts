@@ -99,34 +99,7 @@ export class OwnerActionsService {
     );
 
     // 점주 직접 체크아웃 → 리뷰 요청 fan-out (fire-and-forget)
-    if (!representative.qr_code) {
-      // 토큰 없는 리뷰 링크 발송 방지
-      this.logger.warn({
-        event: 'owner_actions.review_link_skipped',
-        reservationId: representative.id,
-      });
-      return result;
-    }
-
-    const store = await this.prisma.stores.findFirst({
-      where: { id: representative.store_id },
-      select: { business_name: true },
-    });
-    const localePrefix =
-      representative.locale === 'ko' ? '' : `/${representative.locale}`;
-    this.notificationsService
-      .sendCheckoutNotification({
-        reservationId: representative.id,
-        storeName: store?.business_name ?? '',
-        customerName: representative.customer_name,
-        customerPhone: representative.customer_phone,
-        customerEmail: representative.customer_email,
-        locale: representative.locale,
-        reviewPath: `www.lifeistravel.io${localePrefix}/review/${representative.id}?token=${representative.qr_code}`,
-      })
-      .catch((err: unknown) =>
-        this.logger.error('체크아웃 리뷰요청 발송 실패', err),
-      );
+    this.notificationsService.notifyCheckoutReview(representative);
 
     return result;
   }
