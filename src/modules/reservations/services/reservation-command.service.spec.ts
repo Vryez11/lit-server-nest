@@ -48,6 +48,9 @@ const createReservationCommandService = () => {
   const mailService = {
     sendReservationCreatedEmail: jest.fn().mockResolvedValue(undefined),
   };
+  const notificationsService = {
+    notifyCheckoutReview: jest.fn(),
+  };
 
   return {
     service: new ReservationCommandService(
@@ -58,11 +61,13 @@ const createReservationCommandService = () => {
       couponAutoIssueService as never,
       reservationPricingService,
       mailService as never,
+      notificationsService as never,
     ),
     prisma,
     tx,
     couponAutoIssueService,
     mailService,
+    notificationsService,
   };
 };
 
@@ -386,6 +391,85 @@ describe('ReservationCommandService', () => {
       id: 'res_1',
       status: reservations_status.in_progress,
       photos: [],
+    });
+  });
+
+  describe('updateReservationStatus', () => {
+    const baseRow = {
+      id: 'res_1',
+      store_id: 'store_1',
+      status: reservations_status.in_progress,
+      customer_name: '홍길동',
+      customer_phone: '01012345678',
+      customer_email: null,
+      locale: 'ko',
+      qr_code: 'guest-token',
+      actual_start_time: new Date('2026-07-20T01:00:00.000Z'),
+      actual_end_time: null,
+      storage_id: null,
+    };
+
+    it('completed 전환 시 고객 리뷰 요청 fan-out을 호출한다 (점주앱 체크아웃 경로)', async () => {
+      const { service, tx, notificationsService } =
+        createReservationCommandService();
+      tx.reservations.findFirst.mockResolvedValue(baseRow);
+      tx.reservations.update.mockResolvedValue({});
+
+      const result = await service.updateReservationStatus(
+        'store_1',
+        'res_1',
+        reservations_status.completed,
+      );
+
+      expect(notificationsService.notifyCheckoutReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'res_1',
+          customer_phone: '01012345678',
+          qr_code: 'guest-token',
+        }),
+      );
+      expect(result).toEqual({
+        id: 'res_1',
+        status: reservations_status.completed,
+      });
+    });
+
+    it('completed 이외의 전환에서는 리뷰 요청을 보내지 않는다', async () => {
+      const { service, tx, notificationsService } =
+        createReservationCommandService();
+      tx.reservations.findFirst.mockResolvedValue({
+        ...baseRow,
+        status: reservations_status.confirmed,
+        actual_start_time: null,
+      });
+      tx.reservations.update.mockResolvedValue({});
+
+      await service.updateReservationStatus(
+        'store_1',
+        'res_1',
+        reservations_status.in_progress,
+      );
+
+      expect(notificationsService.notifyCheckoutReview).not.toHaveBeenCalled();
+    });
+
+    it('이미 completed인 예약의 completed 재요청(멱등)은 성공하되 리뷰 요청을 재발송하지 않는다', async () => {
+      const { service, tx, notificationsService } =
+        createReservationCommandService();
+      tx.reservations.findFirst.mockResolvedValue({
+        ...baseRow,
+        status: reservations_status.completed,
+      });
+      tx.reservations.update.mockResolvedValue({});
+
+      const result = await service.updateReservationStatus(
+        'store_1',
+        'res_1',
+        reservations_status.completed,
+      );
+
+      expect(result.status).toBe(reservations_status.completed);
+      expect(notificationsService.notifyCheckoutReview).not.toHaveBeenCalled();
     });
   });
 });

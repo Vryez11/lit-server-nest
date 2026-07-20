@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { MailService } from '../../auth/services/mail.service';
 import { CouponAutoIssueService } from '../../coupons/services/coupon-auto-issue.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   normalizeReservationLocale,
   RELEASE_STORAGE_STATUSES,
@@ -46,6 +47,7 @@ export class ReservationCommandService {
     private readonly couponAutoIssueService: CouponAutoIssueService,
     private readonly reservationPricingService: ReservationPricingService,
     private readonly mailService: MailService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async createStoreReservation(
@@ -363,32 +365,32 @@ export class ReservationCommandService {
       return this.approveReservation(storeId, reservationId);
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const reservation = await tx.reservations.findFirst({
+    const reservation = await this.prisma.$transaction(async (tx) => {
+      const found = await tx.reservations.findFirst({
         where: {
           id: reservationId,
           store_id: storeId,
         },
       });
 
-      if (!reservation) {
+      if (!found) {
         throw this.reservationQueryService.reservationNotFound();
       }
 
       this.reservationStatusService.assertCanTransition(
-        reservation.status,
+        found.status,
         nextStatus,
       );
 
       await tx.reservations.update({
-        where: { id: reservation.id },
+        where: { id: found.id },
         data: {
           status: nextStatus,
           ...(nextStatus === reservations_status.in_progress
-            ? { actual_start_time: reservation.actual_start_time ?? new Date() }
+            ? { actual_start_time: found.actual_start_time ?? new Date() }
             : {}),
           ...(nextStatus === reservations_status.completed
-            ? { actual_end_time: reservation.actual_end_time ?? new Date() }
+            ? { actual_end_time: found.actual_end_time ?? new Date() }
             : {}),
           updated_at: new Date(),
         },
@@ -397,23 +399,35 @@ export class ReservationCommandService {
       if (RELEASE_STORAGE_STATUSES.includes(nextStatus)) {
         await this.reservationStorageService.releaseStorageIfAny(
           tx,
-          reservation.storage_id,
+          found.storage_id,
         );
       }
 
       this.logger.log({
         event: 'reservation.status_changed',
-        reservationId: reservation.id,
+        reservationId: found.id,
         storeId,
-        previousStatus: reservation.status,
+        previousStatus: found.status,
         nextStatus,
       });
 
-      return {
-        id: reservation.id,
-        status: nextStatus,
-      };
+      return found;
     });
+
+    // 점주앱 체크아웃(QR·수동 공통 경로) → 고객 리뷰 요청 fan-out.
+    // 트랜잭션 커밋 후에만 발송하고, 실제로 completed로 "전환"된 경우로
+    // 한정한다 — 동일 상태 재요청(멱등 성공)에 재발송하지 않기 위함.
+    if (
+      nextStatus === reservations_status.completed &&
+      reservation.status !== reservations_status.completed
+    ) {
+      this.notificationsService.notifyCheckoutReview(reservation);
+    }
+
+    return {
+      id: reservation.id,
+      status: nextStatus,
+    };
   }
 
   async storeCheckin(

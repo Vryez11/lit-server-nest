@@ -20,8 +20,17 @@ const createService = (config: Record<string, string>) => {
   const mailService = {
     sendReviewRequestEmail: jest.fn().mockResolvedValue(undefined),
   };
+  const prisma = {
+    stores: {
+      findFirst: jest.fn().mockResolvedValue({ business_name: '테스트 매장' }),
+    },
+  };
 
-  const service = new NotificationsService(configService, mailService as never);
+  const service = new NotificationsService(
+    configService,
+    mailService as never,
+    prisma as never,
+  );
   const errorSpy = jest
     .spyOn(
       (
@@ -33,7 +42,7 @@ const createService = (config: Record<string, string>) => {
     )
     .mockImplementation(() => undefined);
 
-  return { service, mailService, errorSpy };
+  return { service, mailService, prisma, errorSpy };
 };
 
 const cancelData: CancelNotificationData = {
@@ -302,6 +311,89 @@ describe('NotificationsService', () => {
           ),
         }),
       );
+    });
+  });
+
+  describe('notifyCheckoutReview', () => {
+    const flushAsync = () => new Promise(setImmediate);
+
+    const reservationRow = {
+      id: 'res_1',
+      store_id: 'store_1',
+      customer_name: '홍길동',
+      customer_phone: '01012345678',
+      customer_email: null,
+      locale: 'ko',
+      qr_code: 'guest-token',
+    };
+
+    it('assembles the review path and store name, then sends the checkout notification', async () => {
+      const { service, prisma } = createService({});
+      const sendSpy = jest
+        .spyOn(service, 'sendCheckoutNotification')
+        .mockResolvedValue(undefined);
+
+      service.notifyCheckoutReview(reservationRow);
+      await flushAsync();
+
+      expect(prisma.stores.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'store_1' } }),
+      );
+      expect(sendSpy).toHaveBeenCalledWith({
+        reservationId: 'res_1',
+        storeName: '테스트 매장',
+        customerName: '홍길동',
+        customerPhone: '01012345678',
+        customerEmail: null,
+        locale: 'ko',
+        reviewPath: 'www.lifeistravel.io/review/res_1?token=guest-token',
+      });
+    });
+
+    it('prefixes the locale segment for non-Korean reservations', async () => {
+      const { service } = createService({});
+      const sendSpy = jest
+        .spyOn(service, 'sendCheckoutNotification')
+        .mockResolvedValue(undefined);
+
+      service.notifyCheckoutReview({
+        ...reservationRow,
+        locale: 'en',
+      });
+      await flushAsync();
+
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reviewPath: 'www.lifeistravel.io/en/review/res_1?token=guest-token',
+        }),
+      );
+    });
+
+    it('skips sending when the reservation has no review token (qr_code)', async () => {
+      const { service } = createService({});
+      const sendSpy = jest
+        .spyOn(service, 'sendCheckoutNotification')
+        .mockResolvedValue(undefined);
+
+      service.notifyCheckoutReview({
+        ...reservationRow,
+        qr_code: null,
+      });
+      await flushAsync();
+
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('absorbs send failures into an error log instead of throwing', async () => {
+      const { service, errorSpy } = createService({});
+      jest
+        .spyOn(service, 'sendCheckoutNotification')
+        .mockRejectedValue(new Error('solapi down'));
+
+      service.notifyCheckoutReview(reservationRow);
+      await flushAsync();
+
+      expect(errorSpy).toHaveBeenCalled();
     });
   });
 });
