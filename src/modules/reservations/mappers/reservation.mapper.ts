@@ -24,6 +24,13 @@ export const toReservationResponse = (
   storageType: reservation.requested_storage_type,
   groupId: reservation.reservation_group_id,
   specialRequests: reservation.special_requests,
+  // 짐 사진/메모는 그룹 대표 행에만 저장됨 (guest 생성 규칙과 동일)
+  luggageImageUrls: Array.isArray(reservation.luggage_image_urls)
+    ? reservation.luggage_image_urls.filter(
+        (url): url is string => typeof url === 'string',
+      )
+    : [],
+  luggageCustomerMemo: reservation.luggage_customer_memo,
   paymentStatus: reservation.payment_status,
   paymentMethod: reservation.payment_method,
   createdAt: reservation.created_at,

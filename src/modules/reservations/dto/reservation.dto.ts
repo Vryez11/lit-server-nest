@@ -90,6 +90,18 @@ export class ReservationResponseDto {
   @ApiPropertyOptional()
   specialRequests?: string | null;
 
+  @ApiPropertyOptional({
+    type: [String],
+    description:
+      '고객이 업로드한 짐 사진 URL 목록입니다 (그룹 대표 행에만 저장됨).',
+  })
+  luggageImageUrls?: string[];
+
+  @ApiPropertyOptional({
+    description: '고객이 짐 사진과 함께 남긴 메모입니다.',
+  })
+  luggageCustomerMemo?: string | null;
+
   @ApiPropertyOptional({ enum: reservations_payment_status })
   paymentStatus?: reservations_payment_status | null;
 
@@ -334,7 +346,10 @@ export class StoreCheckinDto {
 }
 
 export class UpdateLuggageOwnerMemoDto {
-  @ApiProperty({ maxLength: 500, description: '점주가 짐 확인 후 남기는 메모입니다.' })
+  @ApiProperty({
+    maxLength: 500,
+    description: '점주가 짐 확인 후 남기는 메모입니다.',
+  })
   @IsString()
   @MaxLength(500)
   memo!: string;
