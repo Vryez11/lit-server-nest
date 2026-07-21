@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { resolveOwnerPhone } from '../../../common/transformers/resolve-owner-phone.util';
 import { CustomerStoreResponseDto } from '../dto/customer-store.dto';
 import {
   CustomerStoreDetailRecord,
@@ -13,7 +14,8 @@ export const toCustomerStoreResponse = (
   businessName: store.business_name,
   description: store.description,
   phoneNumber: store.store_phone_number ?? null,
-  ownerPhone: store.notification_phone ?? store.phone_number,
+  ownerPhone:
+    resolveOwnerPhone(store.notification_phone, store.phone_number) || null,
   address: store.address,
   latitude: decimalToNumber(store.latitude),
   longitude: decimalToNumber(store.longitude),

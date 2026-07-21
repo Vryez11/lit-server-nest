@@ -156,6 +156,69 @@ describe('NotificationsService', () => {
     ]);
   });
 
+  it('normalizes owner recipients (strips hidden chars/spaces) before sending', async () => {
+    const { service } = createService({
+      SOLAPI_API_KEY: 'k',
+      SOLAPI_API_SECRET: 's',
+      SOLAPI_KAKAO_PF_ID: 'pf',
+      SOLAPI_KAKAO_TEMPLATE_ID: 'tmpl',
+    });
+
+    await service.sendCreateNotification({
+      ...createData,
+      // 대시·국가코드가 섞인 원본 → 정규화된 숫자만 to로 나가야 한다
+      ownerPhone: '010-9999-8888',
+      additionalOwnerPhones: ['+82-010-1111-2222'],
+    });
+
+    type SolapiSendArg = {
+      to?: string;
+      kakaoOptions?: { templateId?: string };
+    };
+    const ownerCalls = (solapiSendMock.mock.calls as [SolapiSendArg][]).filter(
+      (call) => call[0]?.kakaoOptions?.templateId === 'tmpl',
+    );
+    // 원본이 아니라 정규화된 숫자만 to로 전달
+    expect(ownerCalls.map((call) => call[0].to)).toEqual([
+      '01099998888',
+      '01011112222',
+    ]);
+  });
+
+  it('warns and skips the owner create alimtalk when no valid recipient exists', async () => {
+    const { service } = createService({
+      SOLAPI_API_KEY: 'k',
+      SOLAPI_API_SECRET: 's',
+      SOLAPI_KAKAO_PF_ID: 'pf',
+      SOLAPI_KAKAO_TEMPLATE_ID: 'tmpl',
+    });
+    const warnSpy = jest
+      .spyOn(
+        (
+          service as unknown as {
+            logger: { warn: (...args: unknown[]) => void };
+          }
+        ).logger,
+        'warn',
+      )
+      .mockImplementation(() => undefined);
+
+    await service.sendCreateNotification({
+      ...createData,
+      ownerPhone: '',
+      additionalOwnerPhones: [],
+    });
+
+    expect(solapiSendMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'notifications.kakao_create_owner_skipped',
+        reservationId: 'res_abc-123456',
+        storeName: '테스트 매장',
+      }),
+    );
+  });
+
   it('fans out the cancel alimtalk and keeps sending when one recipient fails', async () => {
     const { service } = createService({
       SOLAPI_API_KEY: 'k',

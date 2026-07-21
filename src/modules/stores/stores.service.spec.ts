@@ -75,6 +75,26 @@ describe('StoresService', () => {
     expect(result.businessName).toBe('새 매장명');
   });
 
+  it('stores a blank notification phone as NULL instead of an empty string', async () => {
+    const { service, prisma } = createStoresService();
+    const store = createStore();
+
+    prisma.stores.findUnique.mockResolvedValue(store);
+    prisma.stores.update.mockResolvedValue(store);
+
+    await service.updateProfile('store_1', {
+      notificationPhone: '   ',
+    });
+
+    expect(prisma.stores.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          notification_phone: null,
+        }),
+      }),
+    );
+  });
+
   it('rejects an empty profile update', async () => {
     const { service } = createStoresService();
 

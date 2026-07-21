@@ -209,7 +209,8 @@ function ownerRecipients(
     // normalizePhoneForSolapi는 빈 문자열에 '0'을 붙이므로 실질 자릿수로 판별
     if (normalized.length < 9 || seen.has(normalized)) continue;
     seen.add(normalized);
-    recipients.push(phone);
+    // 숨은 문자·공백이 제거된 정규화 번호만 solapi `to`로 넘긴다.
+    recipients.push(normalized);
   }
   return recipients;
 }
@@ -461,7 +462,12 @@ export class NotificationsService {
       data.additionalOwnerPhones,
     );
     if (recipients.length === 0) {
-      this.logger.debug('ownerPhone 없음 — 카카오 취소 알림톡 스킵');
+      this.logger.warn({
+        event: 'notifications.kakao_cancel_owner_skipped',
+        reason: 'no_valid_owner_recipient',
+        reservationId: data.reservationId,
+        storeName: data.storeName,
+      });
       return;
     }
 
@@ -604,7 +610,12 @@ export class NotificationsService {
       data.additionalOwnerPhones,
     );
     if (recipients.length === 0) {
-      this.logger.debug('ownerPhone 없음 — 점주 예약 생성 알림톡 스킵');
+      this.logger.warn({
+        event: 'notifications.kakao_create_owner_skipped',
+        reason: 'no_valid_owner_recipient',
+        reservationId: data.reservationId,
+        storeName: data.storeName,
+      });
       return;
     }
 
