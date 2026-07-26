@@ -260,6 +260,87 @@ describe('GuestReservationService', () => {
     });
   });
 
+  it('creates a guest reservation when the email is longer than 20 characters', async () => {
+    const { service, prisma, tx } = createGuestReservationService();
+    const longEmail = 'long.email.reservation.guest@example.com';
+
+    prisma.stores.findFirst.mockResolvedValue({
+      id: 'store_1',
+      business_name: '테스트 매장',
+    });
+    prisma.store_settings.findUnique.mockResolvedValue({
+      m_max_capacity: 5,
+    });
+    tx.store_settings.findUnique.mockResolvedValue({
+      m_max_capacity: 5,
+    });
+    prisma.reservations.findMany.mockResolvedValue([
+      {
+        id: 'res_long_email',
+        store_id: 'store_1',
+        customer_name: 'Jane',
+        customer_phone: longEmail,
+        customer_email: longEmail,
+        locale: 'ko',
+        status: reservations_status.pending,
+        start_time: new Date('2026-04-27T01:00:00.000Z'),
+        end_time: new Date('2026-04-27T05:00:00.000Z'),
+        duration: 4,
+        bag_count: 1,
+        total_amount: 4500,
+        message: null,
+        requested_storage_type: reservations_requested_storage_type.s,
+        payment_status: reservations_payment_status.pending,
+        qr_code: 'token',
+        reservation_group_id: 'res_long_email',
+        created_at: new Date('2026-04-27T00:00:00.000Z'),
+        stores: guestStoreRow,
+      },
+    ]);
+
+    await service.createReservation({
+      storeId: 'store_1',
+      customerName: 'Jane',
+      phoneNumber: longEmail,
+      startTime: '2026-04-27T10:00:00+09:00',
+      duration: 4,
+      bagCount: 1,
+      requestedStorageType: reservations_requested_storage_type.s,
+    });
+
+    expect(tx.reservations.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          customer_phone: longEmail,
+          customer_email: longEmail,
+        }),
+      ],
+    });
+    const createdRow = tx.reservations.createMany.mock.calls[0][0].data[0];
+    expect(createdRow.customer_id.length).toBeLessThanOrEqual(255);
+  });
+
+  it('rejects an email longer than 254 characters', async () => {
+    const { service } = createGuestReservationService();
+    const overlongEmail = `${'a'.repeat(250)}@example.com`;
+
+    await expect(
+      service.createReservation({
+        storeId: 'store_1',
+        customerName: 'Jane',
+        phoneNumber: overlongEmail,
+        startTime: '2026-04-27T10:00:00+09:00',
+        duration: 4,
+        bagCount: 1,
+        requestedStorageType: reservations_requested_storage_type.s,
+      }),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'VALIDATION_ERROR',
+      }),
+    });
+  });
+
   it('creates one reservation row per storage type for multi-type requests', async () => {
     const { service, prisma, tx, mailService } =
       createGuestReservationService();

@@ -124,7 +124,8 @@ export class GuestReservationService {
     // 그룹 식별자는 대표 예약 id를 그대로 사용합니다 (id === group_id 행이 대표).
     const representativeId = `res_${randomUUID()}`;
     const groupId = representativeId;
-    const customerId = `guest_${phoneNumber}_${Date.now()}`;
+    // 이메일 연락처는 길 수 있으므로 잘라서 customer_id(VarChar(255)) 한도를 넘지 않게 한다.
+    const customerId = `guest_${phoneNumber.slice(0, 64)}_${Date.now()}`;
     const accessToken = this.generateAccessToken();
     const paymentKey = dto.paymentKey ?? dto.payment_key;
     const orderId = dto.orderId ?? dto.order_id;
@@ -928,7 +929,9 @@ export class GuestReservationService {
   }
 
   private assertValidEmail(email: string): void {
-    if (!this.isEmailAddress(email)) {
+    // 254 = RFC 5321 주소 최대 길이. customer_phone/customer_email 컬럼(VarChar(255))
+    // 한도를 넘는 값이 DB까지 내려가 1406(Data too long)으로 터지지 않게 여기서 막는다.
+    if (!this.isEmailAddress(email) || email.length > 254) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: '올바른 이메일을 입력해주세요.',
