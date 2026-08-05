@@ -7,7 +7,6 @@ import {
   StoreOperationSettingsDto,
   StoreSettingsResponseDto,
   StoreStorageSettingsDto,
-  StoreStorageSizeDto,
   UpdateStoreSettingsDto,
 } from '../dto/store-settings.dto';
 import { toStoreSettingsResponse } from '../mappers/store-settings.mapper';
@@ -73,7 +72,7 @@ export class StoreSettingsService {
           },
         });
 
-        await tx.store_settings.upsert({
+        const savedSettings = await tx.store_settings.upsert({
           where: { store_id: storeId },
           create: {
             store_id: storeId,
@@ -90,10 +89,12 @@ export class StoreSettingsService {
         }
 
         if (dto.storageSettings) {
+          // 요청 DTO가 아니라 방금 저장된 행을 넘긴다 — 요청에 일부 규격만 담겨 있어도
+          // 나머지 규격의 보관함이 강등되지 않는다.
           await this.storageSyncService.syncFromSettings(
             tx,
             storeId,
-            dto.storageSettings,
+            savedSettings,
           );
         }
       },

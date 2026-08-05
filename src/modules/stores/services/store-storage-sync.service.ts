@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, storages_status, storages_type } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { FROZEN_STORAGE_PRICES } from '../../reservations/pricing/reservation-pricing.constants';
 import {
-  StoreStorageSettingsDto,
-  StoreStorageSizeDto,
-} from '../dto/store-settings.dto';
+  FROZEN_STORAGE_PRICES,
+  SELLABLE_STORAGE_TYPES,
+  STORAGE_SETTINGS_COLUMNS,
+} from '../../reservations/pricing/reservation-pricing.constants';
 
 type StorageConfig = {
   type: storages_type;
@@ -15,14 +15,39 @@ type StorageConfig = {
   pricing: number;
 };
 
+/**
+ * 보관함 동기화의 입력 — 요청 DTO가 아니라 **저장이 끝난 store_settings 행**이다.
+ *
+ * 예전에는 요청 DTO를 그대로 받아, 누락된 필드를 store_settings 저장 코드는
+ * "기존값 유지"로, 이 동기화 코드는 "비활성/용량 0"으로 해석했다. 그 결과 일부 규격만
+ * 담긴 요청 한 번에 중형·대형 보관함이 통째로 maintenance로 강등되면서,
+ * 설정 화면은 멀쩡해 보이는데 예약만 계속 접수 상태로 죽는 사고가 났다.
+ * 저장된 행을 소스로 삼으면 두 값이 어긋날 수 없다.
+ */
+export type StorageSyncSettings = {
+  m_max_capacity?: number | null;
+  m_enabled?: boolean | null;
+  l_max_capacity?: number | null;
+  l_enabled?: boolean | null;
+  xl_max_capacity?: number | null;
+  xl_enabled?: boolean | null;
+};
+
+/** 더 이상 판매하지 않는 레거시 규격 — 남은 보관함은 배정 대상에서 제외한다. */
+const LEGACY_STORAGE_TYPES = [
+  storages_type.xl,
+  storages_type.special,
+  storages_type.refrigeration,
+];
+
 @Injectable()
 export class StoreStorageSyncService {
   async syncFromSettings(
     tx: Prisma.TransactionClient,
     storeId: string,
-    storageSettings: StoreStorageSettingsDto,
+    settings: StorageSyncSettings,
   ): Promise<void> {
-    const configs = this.buildStorageConfigs(storageSettings);
+    const configs = this.buildStorageConfigs(settings);
 
     for (const config of configs) {
       const existing = await tx.storages.findMany({
@@ -76,6 +101,28 @@ export class StoreStorageSyncService {
         });
       }
 
+      // 설정 범위 안인데 maintenance로 묶여 있던 보관함을 되살린다.
+      // 이 복구 경로가 없어서, 한 번 강등된 보관함은 설정을 다시 저장해도
+      // 영원히 배정 대상에서 빠져 있었다. 사용 중(occupied)은 건드리지 않는다.
+      const restorableIds = existing
+        .filter(
+          (storage) =>
+            config.enabled &&
+            targetNumbers.has(storage.number) &&
+            storage.status === storages_status.maintenance,
+        )
+        .map((storage) => storage.id);
+
+      if (restorableIds.length > 0) {
+        await tx.storages.updateMany({
+          where: { id: { in: restorableIds } },
+          data: {
+            status: storages_status.available,
+            updated_at: new Date(),
+          },
+        });
+      }
+
       const excessAvailableIds = existing
         .filter(
           (storage) =>
@@ -106,7 +153,7 @@ export class StoreStorageSyncService {
       where: {
         store_id: storeId,
         type: {
-          in: [storages_type.xl, storages_type.special],
+          in: LEGACY_STORAGE_TYPES,
         },
         status: storages_status.available,
       },
@@ -117,91 +164,19 @@ export class StoreStorageSyncService {
     });
   }
 
-  private buildStorageConfigs(
-    storageSettings: StoreStorageSettingsDto,
-  ): StorageConfig[] {
-    return [
-      this.buildStorageConfig(
-        storages_type.s,
-        'S',
-        storageSettings.isSmallEnabled,
-        storageSettings.small,
-        FROZEN_STORAGE_PRICES.s,
-      ),
-      this.buildStorageConfig(
-        storages_type.m,
-        'M',
-        storageSettings.isMediumEnabled,
-        storageSettings.medium,
-        FROZEN_STORAGE_PRICES.m,
-      ),
-      this.buildStorageConfig(
-        storages_type.l,
-        'L',
-        storageSettings.isLargeEnabled,
-        storageSettings.large,
-        FROZEN_STORAGE_PRICES.l,
-      ),
-      {
-        type: storages_type.refrigeration,
-        prefix: 'RF',
-        enabled: this.toBoolean(storageSettings.refrigerationAvailable) ?? false,
-        capacity:
-          this.toNumber(storageSettings.refrigerationMaxCapacity) ?? 0,
-        pricing: FROZEN_STORAGE_PRICES.s,
-      },
-    ];
-  }
+  /** 소·중·대 3종만 만든다. 규격 ↔ 설정 컬럼 매핑은 STORAGE_SETTINGS_COLUMNS를 따른다. */
+  private buildStorageConfigs(settings: StorageSyncSettings): StorageConfig[] {
+    return SELLABLE_STORAGE_TYPES.map((storageType) => {
+      const binding = STORAGE_SETTINGS_COLUMNS[storageType];
 
-  private buildStorageConfig(
-    type: storages_type,
-    prefix: string,
-    enabled: boolean | undefined,
-    size: StoreStorageSizeDto | undefined,
-    pricing: number,
-  ): StorageConfig {
-    return {
-      type,
-      prefix,
-      enabled: this.toBoolean(enabled) ?? false,
-      capacity: this.toNumber(size?.maxCapacity) ?? 0,
-      pricing,
-    };
-  }
-
-  private toNumber(value: unknown): number | undefined {
-    if (value === '' || value === null || value === undefined) {
-      return undefined;
-    }
-
-    const numberValue = Number(value);
-    return Number.isNaN(numberValue) ? undefined : numberValue;
-  }
-
-  private toBoolean(value: unknown): boolean | undefined {
-    if (value === '' || value === null || value === undefined) {
-      return undefined;
-    }
-
-    if (typeof value === 'boolean') {
-      return value;
-    }
-
-    if (typeof value === 'number') {
-      return value !== 0;
-    }
-
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (['true', '1', 'yes', 'y'].includes(normalized)) {
-        return true;
-      }
-      if (['false', '0', 'no', 'n'].includes(normalized)) {
-        return false;
-      }
-    }
-
-    return undefined;
+      return {
+        type: storages_type[storageType],
+        prefix: binding.numberPrefix,
+        enabled: settings[binding.enabled] ?? false,
+        capacity: settings[binding.capacity] ?? 0,
+        pricing: FROZEN_STORAGE_PRICES[storageType],
+      };
+    });
   }
 
   private storageNumber(prefix: string, index: number): string {

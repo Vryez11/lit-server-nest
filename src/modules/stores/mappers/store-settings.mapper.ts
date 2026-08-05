@@ -57,12 +57,23 @@ export const toStoreSettingsResponse = ({
   categories: toCategoryArray(settings?.categories),
 });
 
+/**
+ * 판매 규격은 소·중·대 3종뿐이다. 폐기된 초소형·특수·냉장은 앱 하위호환을 위해
+ * 필드 자체는 남기되 수용량 0으로 내려, 어떤 클라이언트도 재고가 있는 것으로
+ * 오해하지 않게 한다. (랜딩은 `enabled !== false && maxCapacity > 0`으로 옵션을 거른다.)
+ *
+ * 아래 규격 ↔ 컬럼 매핑은 한 칸 밀린 레거시 오프셋(소형→m_*, 중형→l_*, 대형→xl_*)이며,
+ * 판매/배정 경로는 같은 오프셋을 reservations/pricing/reservation-pricing.constants.ts의
+ * STORAGE_SETTINGS_COLUMNS로 관리한다. 여기 값을 바꾸려면 그 상수도 함께 고쳐야 한다.
+ */
+const RETIRED_STORAGE_CAPACITY = 0;
+
 const toStorageSettings = (settings: StoreSettingsRecord) => ({
   extraSmall: {
     hourlyRate: FROZEN_STORAGE_PRICES.s,
     dailyRate: FROZEN_STORAGE_PRICES.s,
     hourUnit: settings.s_hour_unit,
-    maxCapacity: settings.s_max_capacity,
+    maxCapacity: RETIRED_STORAGE_CAPACITY,
     description: '초소형',
   },
   small: {
@@ -90,7 +101,7 @@ const toStorageSettings = (settings: StoreSettingsRecord) => ({
     hourlyRate: FROZEN_STORAGE_PRICES.l,
     dailyRate: FROZEN_STORAGE_PRICES.l,
     hourUnit: settings.special_hour_unit,
-    maxCapacity: settings.special_max_capacity,
+    maxCapacity: RETIRED_STORAGE_CAPACITY,
     description: '특수',
   },
   isExtraSmallEnabled: false,
@@ -98,11 +109,11 @@ const toStorageSettings = (settings: StoreSettingsRecord) => ({
   isMediumEnabled: settings.l_enabled ?? true,
   isLargeEnabled: settings.xl_enabled ?? true,
   isSpecialEnabled: false,
-  refrigerationAvailable: settings.refrigeration_enabled ?? false,
+  refrigerationAvailable: false,
   refrigerationHourlyFee: FROZEN_STORAGE_PRICES.s,
   refrigerationDailyFee: FROZEN_STORAGE_PRICES.s,
   refrigerationHourUnit: settings.refrigeration_hour_unit,
-  refrigerationMaxCapacity: settings.refrigeration_max_capacity,
+  refrigerationMaxCapacity: RETIRED_STORAGE_CAPACITY,
 });
 
 const toOperatingDays = (hours: StoreOperatingHoursRecord) => ({

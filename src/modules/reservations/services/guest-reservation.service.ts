@@ -41,7 +41,12 @@ import {
   toGuestStoreName,
 } from '../mappers/guest-reservation.mapper';
 import { normalizeReservationLocale } from '../reservation.constants';
-import { normalizeStorageAssignmentType } from '../pricing/reservation-pricing.constants';
+import {
+  BillingStorageType,
+  normalizeStorageAssignmentType,
+  SELLABLE_STORAGE_TYPES,
+  STORAGE_SETTINGS_COLUMNS,
+} from '../pricing/reservation-pricing.constants';
 import { ReservationPricingService } from '../pricing/reservation-pricing.service';
 import { ReservationStorageService } from './reservation-storage.service';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -700,17 +705,11 @@ export class GuestReservationService {
         _sum: { bag_count: true },
       }),
     ]);
-    const countByType = new Map<reservations_requested_storage_type, number>();
-
-    for (const row of aggregated) {
-      if (row.requested_storage_type) {
-        countByType.set(row.requested_storage_type, row._sum.bag_count ?? 0);
-      }
-    }
+    const countByType = this.aggregateCountsBySellableType(aggregated);
 
     const items: GuestAvailabilityResponseDto['items'] = {};
 
-    for (const storageType of ALLOWED_STORAGE_TYPES) {
+    for (const storageType of SELLABLE_STORAGE_TYPES) {
       const maxCapacity = this.getMaxCapacity(settings, storageType);
       const currentCount = countByType.get(storageType) ?? 0;
 
@@ -974,7 +973,14 @@ export class GuestReservationService {
     },
     client: PrismaService | Prisma.TransactionClient = this.prisma,
   ): Promise<CapacityFailure[]> {
-    const storageTypes = params.items.map((item) => item.storageType);
+    // items의 storageType은 이미 배정 규격으로 정규화돼 있다. 같은 보관함을 쓰는
+    // 레거시 규격(xl·special) 예약도 함께 세야 대형을 초과 판매하지 않는다.
+    const requestedTypes = new Set(
+      params.items.map((item) => item.storageType),
+    );
+    const storageTypes = ALLOWED_STORAGE_TYPES.filter((type) =>
+      requestedTypes.has(normalizeStorageAssignmentType(type)),
+    );
     const [settings, aggregated] = await Promise.all([
       client.store_settings.findUnique({
         where: { store_id: params.storeId },
@@ -992,13 +998,7 @@ export class GuestReservationService {
         _sum: { bag_count: true },
       }),
     ]);
-    const countByType = new Map<reservations_requested_storage_type, number>();
-
-    for (const row of aggregated) {
-      if (row.requested_storage_type) {
-        countByType.set(row.requested_storage_type, row._sum.bag_count ?? 0);
-      }
-    }
+    const countByType = this.aggregateCountsBySellableType(aggregated);
 
     const failures: CapacityFailure[] = [];
 
@@ -1019,31 +1019,69 @@ export class GuestReservationService {
     return failures;
   }
 
+  /**
+   * 레거시 규격(xl·special) 예약도 실제로는 대형 보관함을 쓰므로, 집계할 때
+   * 배정 규격으로 접어서 같은 칸에 더한다. 접지 않으면 xl 예약이 어느 칸에도
+   * 잡히지 않아 대형을 초과 판매하게 된다.
+   */
+  private aggregateCountsBySellableType(
+    aggregated: {
+      requested_storage_type: reservations_requested_storage_type | null;
+      _sum: { bag_count: number | null };
+    }[],
+  ): Map<reservations_requested_storage_type, number> {
+    const countByType = new Map<reservations_requested_storage_type, number>();
+
+    for (const row of aggregated) {
+      if (!row.requested_storage_type) {
+        continue;
+      }
+
+      const assignmentType = normalizeStorageAssignmentType(
+        row.requested_storage_type,
+      );
+      const previous = countByType.get(assignmentType) ?? 0;
+      countByType.set(assignmentType, previous + (row._sum.bag_count ?? 0));
+    }
+
+    return countByType;
+  }
+
+  /**
+   * 판매 가능 수량. 소·중·대 3종만 판매하며, 점주가 끈 규격은 0을 돌려
+   * 랜딩·고객앱에서 아예 노출되지 않게 한다.
+   * (예전에는 enabled를 보지 않아, 점주가 끈 냉장·특수가 계속 팔리고
+   *  배정할 보관함이 없어 예약이 접수 상태로 죽는 문제가 있었다.)
+   */
   private getMaxCapacity(
     settings: Awaited<
       ReturnType<PrismaService['store_settings']['findUnique']>
     >,
     storageType: reservations_requested_storage_type,
   ): number {
+    const assignmentType = normalizeStorageAssignmentType(storageType);
+
+    if (!this.isSellableStorageType(assignmentType)) {
+      return 0;
+    }
+
     if (!settings) {
       return 5;
     }
 
-    const billingType = normalizeStorageAssignmentType(storageType);
-    const capacityMap: Record<
-      reservations_requested_storage_type,
-      number | null | undefined
-    > = {
-      [reservations_requested_storage_type.s]: settings.m_max_capacity,
-      [reservations_requested_storage_type.m]: settings.l_max_capacity,
-      [reservations_requested_storage_type.l]: settings.xl_max_capacity,
-      [reservations_requested_storage_type.xl]: settings.xl_max_capacity,
-      [reservations_requested_storage_type.special]: settings.xl_max_capacity,
-      [reservations_requested_storage_type.refrigeration]:
-        settings.refrigeration_max_capacity,
-    };
+    const columns = STORAGE_SETTINGS_COLUMNS[assignmentType];
 
-    return capacityMap[billingType] ?? 5;
+    if (settings[columns.enabled] === false) {
+      return 0;
+    }
+
+    return settings[columns.capacity] ?? 5;
+  }
+
+  private isSellableStorageType(
+    storageType: reservations_requested_storage_type,
+  ): storageType is BillingStorageType {
+    return (SELLABLE_STORAGE_TYPES as readonly string[]).includes(storageType);
   }
 
   private async findVerifiedPaymentIfProvided(

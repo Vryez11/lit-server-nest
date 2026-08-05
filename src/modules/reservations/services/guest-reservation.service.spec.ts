@@ -1195,3 +1195,98 @@ describe('GuestReservationService', () => {
     });
   });
 });
+
+describe('GuestReservationService 판매 규격 (소·중·대 3종)', () => {
+  const availabilityQuery = {
+    storeId: 'store_1',
+    startTime: '2026-05-01T01:00:00.000Z',
+    duration: 4,
+  };
+
+  /** 소·중·대가 모두 켜져 있는 정상 매장 (컬럼은 한 칸 밀린 레거시 오프셋) */
+  const enabledSettings = {
+    m_max_capacity: 8,
+    m_enabled: true,
+    l_max_capacity: 5,
+    l_enabled: true,
+    xl_max_capacity: 3,
+    xl_enabled: true,
+    refrigeration_max_capacity: 3,
+    refrigeration_enabled: false,
+  };
+
+  it('소·중·대 3종만 응답하고 특대·특수·냉장은 팔지 않는다', async () => {
+    const { service, prisma } = createGuestReservationService();
+
+    prisma.stores.findFirst.mockResolvedValue({ id: 'store_1' });
+    prisma.store_settings.findUnique.mockResolvedValue(enabledSettings);
+
+    const result = await service.getAvailability(availabilityQuery);
+
+    expect(Object.keys(result.items).sort()).toEqual(['l', 'm', 's']);
+  });
+
+  it('점주가 끈 규격은 잔여 0으로 내려 예약을 받지 않는다', async () => {
+    const { service, prisma } = createGuestReservationService();
+
+    prisma.stores.findFirst.mockResolvedValue({ id: 'store_1' });
+    prisma.store_settings.findUnique.mockResolvedValue({
+      ...enabledSettings,
+      xl_enabled: false, // 화면상 '대형' 비활성
+    });
+
+    const result = await service.getAvailability(availabilityQuery);
+
+    expect(result.items.l).toEqual({
+      maxCapacity: 0,
+      currentCount: 0,
+      remaining: 0,
+    });
+    expect(result.items.s.remaining).toBe(8);
+  });
+
+  it('레거시 특대(xl) 예약도 대형 잔여에서 차감한다', async () => {
+    const { service, prisma } = createGuestReservationService();
+
+    prisma.stores.findFirst.mockResolvedValue({ id: 'store_1' });
+    prisma.store_settings.findUnique.mockResolvedValue(enabledSettings);
+    prisma.reservations.groupBy.mockResolvedValue([
+      {
+        requested_storage_type: reservations_requested_storage_type.l,
+        _sum: { bag_count: 1 },
+      },
+      {
+        requested_storage_type: reservations_requested_storage_type.xl,
+        _sum: { bag_count: 2 },
+      },
+    ]);
+
+    const result = await service.getAvailability(availabilityQuery);
+
+    // 대형 정원 3 - (l 1건 + xl 2건) = 0
+    expect(result.items.l.currentCount).toBe(3);
+    expect(result.items.l.remaining).toBe(0);
+  });
+
+  it('냉장 예약은 정원 0이라 접수 단계에서 막힌다', async () => {
+    const { service, prisma, tx } = createGuestReservationService();
+
+    prisma.stores.findFirst.mockResolvedValue({ id: 'store_1' });
+    prisma.store_settings.findUnique.mockResolvedValue(enabledSettings);
+    tx.store_settings.findUnique.mockResolvedValue(enabledSettings);
+
+    await expect(
+      service.createReservation({
+        storeId: 'store_1',
+        customerName: '홍길동',
+        phoneNumber: '010-1234-5678',
+        startTime: '2026-05-01T01:00:00.000Z',
+        duration: 4,
+        bagCount: 1,
+        storageType: reservations_requested_storage_type.refrigeration,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'CAPACITY_EXCEEDED' },
+    });
+  });
+});
