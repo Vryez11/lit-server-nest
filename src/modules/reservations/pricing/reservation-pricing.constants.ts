@@ -21,6 +21,74 @@ export const STORAGE_SIZE_LABELS: Record<BillingStorageType, string> = {
 /** 익일 누진 계산에 사용하는 KST 타임존 */
 export const STORAGE_BILLING_TIMEZONE = 'Asia/Seoul';
 
+/**
+ * 실제로 판매·배정하는 규격 — 소형/중형/대형 3종.
+ *
+ * DB enum(reservations_requested_storage_type)에는 xl·special·refrigeration도 남아 있지만
+ * 과거 예약 행 보존을 위한 것이고 신규 판매는 하지 않는다. 2026-08 기준 프로덕션 12개 매장
+ * 모두 소·중·대만 활성이고 특수·냉장을 켠 매장은 0곳이다.
+ * xl·special은 배정 시 l로 흡수되고(STORAGE_ASSIGNMENT_ALIASES), refrigeration은 판매하지 않는다.
+ */
+export const SELLABLE_STORAGE_TYPES = [
+  reservations_requested_storage_type.s,
+  reservations_requested_storage_type.m,
+  reservations_requested_storage_type.l,
+] as const;
+
+/**
+ * 규격 ↔ store_settings 컬럼 매핑 — **이 파일이 유일한 정의처다.**
+ *
+ * 화면 '소형'이 m_* 컬럼에, '중형'이 l_*, '대형'이 xl_*에 저장되는 한 칸 밀린 오프셋이
+ * 역사적 이유로 남아 있다(s_* 컬럼은 폐기된 '초소형' 자리라 아무도 쓰지 않는다).
+ * 예전에는 이 매핑이 getMaxCapacity·buildSettingsData·buildStorageConfigs·응답 매퍼
+ * 네 곳에 각각 흩어져 있었고, 그 틈에서 보관함이 통째로 maintenance로 강등되는 사고가 났다.
+ * 오프셋 교정은 데이터 마이그레이션이 필요한 별도 과제이며, 그때 여기만 고치면 된다.
+ */
+export const STORAGE_SETTINGS_COLUMNS: Record<
+  BillingStorageType,
+  StorageTypeBinding
+> = {
+  s: {
+    capacity: 'm_max_capacity',
+    enabled: 'm_enabled',
+    hourUnit: 'm_hour_unit',
+    dtoSize: 'small',
+    dtoEnabled: 'isSmallEnabled',
+    numberPrefix: 'S',
+  },
+  m: {
+    capacity: 'l_max_capacity',
+    enabled: 'l_enabled',
+    hourUnit: 'l_hour_unit',
+    dtoSize: 'medium',
+    dtoEnabled: 'isMediumEnabled',
+    numberPrefix: 'M',
+  },
+  l: {
+    capacity: 'xl_max_capacity',
+    enabled: 'xl_enabled',
+    hourUnit: 'xl_hour_unit',
+    dtoSize: 'large',
+    dtoEnabled: 'isLargeEnabled',
+    numberPrefix: 'L',
+  },
+};
+
+export type StorageTypeBinding = {
+  /** store_settings 수용량 컬럼 */
+  capacity: 'm_max_capacity' | 'l_max_capacity' | 'xl_max_capacity';
+  /** store_settings 활성 여부 컬럼 */
+  enabled: 'm_enabled' | 'l_enabled' | 'xl_enabled';
+  /** store_settings 시간 단위 컬럼 */
+  hourUnit: 'm_hour_unit' | 'l_hour_unit' | 'xl_hour_unit';
+  /** 설정 API DTO의 규격 필드명 */
+  dtoSize: 'small' | 'medium' | 'large';
+  /** 설정 API DTO의 활성 여부 필드명 */
+  dtoEnabled: 'isSmallEnabled' | 'isMediumEnabled' | 'isLargeEnabled';
+  /** 보관함 번호 접두사 (S1, M1, L1) */
+  numberPrefix: 'S' | 'M' | 'L';
+};
+
 const STORAGE_ASSIGNMENT_ALIASES: Partial<
   Record<
     reservations_requested_storage_type,
