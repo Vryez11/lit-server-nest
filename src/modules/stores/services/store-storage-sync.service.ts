@@ -164,10 +164,7 @@ export class StoreStorageSyncService {
     });
   }
 
-  /**
-   * 소·중·대 3종만 만든다. 규격 ↔ 설정 컬럼 매핑은
-   * STORAGE_SETTINGS_COLUMNS 한 곳에서만 정의된다.
-   */
+  /** 소·중·대 3종만 만든다. 규격 ↔ 설정 컬럼 매핑은 STORAGE_SETTINGS_COLUMNS를 따른다. */
   private buildStorageConfigs(settings: StorageSyncSettings): StorageConfig[] {
     return SELLABLE_STORAGE_TYPES.map((storageType) => {
       const binding = STORAGE_SETTINGS_COLUMNS[storageType];

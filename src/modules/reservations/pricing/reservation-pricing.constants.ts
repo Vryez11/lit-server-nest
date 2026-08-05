@@ -36,42 +36,25 @@ export const SELLABLE_STORAGE_TYPES = [
 ] as const;
 
 /**
- * 규격 ↔ store_settings 컬럼 매핑 — **이 파일이 유일한 정의처다.**
+ * 규격 ↔ store_settings 컬럼 매핑.
  *
  * 화면 '소형'이 m_* 컬럼에, '중형'이 l_*, '대형'이 xl_*에 저장되는 한 칸 밀린 오프셋이
  * 역사적 이유로 남아 있다(s_* 컬럼은 폐기된 '초소형' 자리라 아무도 쓰지 않는다).
- * 예전에는 이 매핑이 getMaxCapacity·buildSettingsData·buildStorageConfigs·응답 매퍼
- * 네 곳에 각각 흩어져 있었고, 그 틈에서 보관함이 통째로 maintenance로 강등되는 사고가 났다.
- * 오프셋 교정은 데이터 마이그레이션이 필요한 별도 과제이며, 그때 여기만 고치면 된다.
+ * 이 오프셋을 네 곳(getMaxCapacity·buildStorageConfigs·buildSettingsData·응답 매퍼)이
+ * 각자 인라인으로 알고 있었고, 그 틈에서 보관함이 통째로 maintenance로 강등되는 사고가 났다.
+ *
+ * 현재 이 상수를 쓰는 곳은 판매/배정 경로 두 곳(getMaxCapacity·buildStorageConfigs)이다.
+ * 설정 저장(buildSettingsData)과 응답 매퍼는 아직 인라인이지만, syncFromSettings가
+ * 저장된 store_settings 행을 소스로 삼도록 바뀌어 둘이 어긋날 수는 없다.
+ * 오프셋 교정은 데이터 마이그레이션이 필요한 별도 과제다.
  */
 export const STORAGE_SETTINGS_COLUMNS: Record<
   BillingStorageType,
   StorageTypeBinding
 > = {
-  s: {
-    capacity: 'm_max_capacity',
-    enabled: 'm_enabled',
-    hourUnit: 'm_hour_unit',
-    dtoSize: 'small',
-    dtoEnabled: 'isSmallEnabled',
-    numberPrefix: 'S',
-  },
-  m: {
-    capacity: 'l_max_capacity',
-    enabled: 'l_enabled',
-    hourUnit: 'l_hour_unit',
-    dtoSize: 'medium',
-    dtoEnabled: 'isMediumEnabled',
-    numberPrefix: 'M',
-  },
-  l: {
-    capacity: 'xl_max_capacity',
-    enabled: 'xl_enabled',
-    hourUnit: 'xl_hour_unit',
-    dtoSize: 'large',
-    dtoEnabled: 'isLargeEnabled',
-    numberPrefix: 'L',
-  },
+  s: { capacity: 'm_max_capacity', enabled: 'm_enabled', numberPrefix: 'S' },
+  m: { capacity: 'l_max_capacity', enabled: 'l_enabled', numberPrefix: 'M' },
+  l: { capacity: 'xl_max_capacity', enabled: 'xl_enabled', numberPrefix: 'L' },
 };
 
 export type StorageTypeBinding = {
@@ -79,12 +62,6 @@ export type StorageTypeBinding = {
   capacity: 'm_max_capacity' | 'l_max_capacity' | 'xl_max_capacity';
   /** store_settings 활성 여부 컬럼 */
   enabled: 'm_enabled' | 'l_enabled' | 'xl_enabled';
-  /** store_settings 시간 단위 컬럼 */
-  hourUnit: 'm_hour_unit' | 'l_hour_unit' | 'xl_hour_unit';
-  /** 설정 API DTO의 규격 필드명 */
-  dtoSize: 'small' | 'medium' | 'large';
-  /** 설정 API DTO의 활성 여부 필드명 */
-  dtoEnabled: 'isSmallEnabled' | 'isMediumEnabled' | 'isLargeEnabled';
   /** 보관함 번호 접두사 (S1, M1, L1) */
   numberPrefix: 'S' | 'M' | 'L';
 };

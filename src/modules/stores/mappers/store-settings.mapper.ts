@@ -62,9 +62,9 @@ export const toStoreSettingsResponse = ({
  * 필드 자체는 남기되 수용량 0으로 내려, 어떤 클라이언트도 재고가 있는 것으로
  * 오해하지 않게 한다. (랜딩은 `enabled !== false && maxCapacity > 0`으로 옵션을 거른다.)
  *
- * 규격 ↔ 컬럼의 한 칸 밀린 오프셋(소형→m_*, 중형→l_*, 대형→xl_*)은
- * reservations/pricing/reservation-pricing.constants.ts의 STORAGE_SETTINGS_COLUMNS가
- * 유일한 정의처다. 여기 값을 바꾸려면 그 상수를 함께 봐야 한다.
+ * 아래 규격 ↔ 컬럼 매핑은 한 칸 밀린 레거시 오프셋(소형→m_*, 중형→l_*, 대형→xl_*)이며,
+ * 판매/배정 경로는 같은 오프셋을 reservations/pricing/reservation-pricing.constants.ts의
+ * STORAGE_SETTINGS_COLUMNS로 관리한다. 여기 값을 바꾸려면 그 상수도 함께 고쳐야 한다.
  */
 const RETIRED_STORAGE_CAPACITY = 0;
 
