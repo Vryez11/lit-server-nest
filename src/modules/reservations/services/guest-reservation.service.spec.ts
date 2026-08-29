@@ -351,11 +351,19 @@ describe('GuestReservationService', () => {
     });
     prisma.store_settings.findUnique.mockResolvedValue({
       m_max_capacity: 5,
+      m_enabled: true,
+      l_max_capacity: 5,
+      l_enabled: true,
       xl_max_capacity: 5,
+      xl_enabled: true,
     });
     tx.store_settings.findUnique.mockResolvedValue({
       m_max_capacity: 5,
+      m_enabled: true,
+      l_max_capacity: 5,
+      l_enabled: true,
       xl_max_capacity: 5,
+      xl_enabled: true,
     });
     tx.payments.findFirst.mockResolvedValue({
       id: 1n,
@@ -493,7 +501,11 @@ describe('GuestReservationService', () => {
     });
     prisma.store_settings.findUnique.mockResolvedValue({
       m_max_capacity: 5,
+      m_enabled: true,
+      l_max_capacity: 5,
+      l_enabled: true,
       xl_max_capacity: 5,
+      xl_enabled: true,
     });
     prisma.reservations.groupBy.mockResolvedValue([
       {
@@ -1288,5 +1300,310 @@ describe('GuestReservationService 판매 규격 (소·중·대 3종)', () => {
     ).rejects.toMatchObject({
       response: { code: 'CAPACITY_EXCEEDED' },
     });
+  });
+});
+
+describe('GuestReservationService 멀티타입 3종 동시 (소·중·대)', () => {
+  /** 소·중·대가 모두 켜진 매장 — 컬럼은 한 칸 밀린 레거시 오프셋 (소형→m_*, 중형→l_*, 대형→xl_*) */
+  const fullSettings = {
+    m_max_capacity: 8,
+    m_enabled: true,
+    l_max_capacity: 5,
+    l_enabled: true,
+    xl_max_capacity: 3,
+    xl_enabled: true,
+  };
+
+  const createRequest = {
+    storeId: 'store_1',
+    customerName: '홍길동',
+    phoneNumber: '010-1234-5678',
+    startTime: '2026-05-01T01:00:00.000Z',
+    duration: 4,
+    items: [
+      { storageType: reservations_requested_storage_type.s, bagCount: 2 },
+      { storageType: reservations_requested_storage_type.m, bagCount: 1 },
+      { storageType: reservations_requested_storage_type.l, bagCount: 1 },
+    ],
+  };
+
+  const pendingRow = (
+    id: string,
+    storageType: reservations_requested_storage_type,
+  ) => ({
+    id,
+    store_id: 'store_1',
+    status: reservations_status.pending,
+    start_time: new Date('2026-05-01T01:00:00.000Z'),
+    end_time: new Date('2026-05-01T05:00:00.000Z'),
+    requested_storage_type: storageType,
+    confirmed_at: null,
+  });
+
+  const groupRow = (overrides: Record<string, unknown>) => ({
+    id: 'res_a',
+    store_id: 'store_1',
+    customer_name: '홍길동',
+    customer_phone: '01012345678',
+    customer_email: null,
+    locale: 'ko',
+    status: reservations_status.confirmed,
+    start_time: new Date('2026-05-01T01:00:00.000Z'),
+    end_time: new Date('2026-05-01T05:00:00.000Z'),
+    duration: 4,
+    bag_count: 1,
+    total_amount: 0,
+    message: null,
+    requested_storage_type: reservations_requested_storage_type.s,
+    payment_status: reservations_payment_status.pending,
+    qr_code: 'token',
+    reservation_group_id: 'res_a',
+    created_at: new Date('2026-05-01T00:00:00.000Z'),
+    stores: guestStoreRow,
+    ...overrides,
+  });
+
+  const setupThreeTypeStore = () => {
+    const context = createGuestReservationService();
+    const { prisma, tx } = context;
+
+    prisma.stores.findFirst.mockResolvedValue({
+      id: 'store_1',
+      business_name: '테스트 매장',
+    });
+    prisma.store_settings.findUnique.mockResolvedValue(fullSettings);
+    tx.store_settings.findUnique.mockResolvedValue(fullSettings);
+    prisma.reservations.findMany.mockResolvedValue([
+      groupRow({
+        id: 'res_a',
+        bag_count: 2,
+        total_amount: 9000,
+        requested_storage_type: reservations_requested_storage_type.s,
+      }),
+      groupRow({
+        id: 'res_b',
+        bag_count: 1,
+        total_amount: 6000,
+        requested_storage_type: reservations_requested_storage_type.m,
+      }),
+      groupRow({
+        id: 'res_c',
+        bag_count: 1,
+        total_amount: 8000,
+        requested_storage_type: reservations_requested_storage_type.l,
+      }),
+    ]);
+
+    return context;
+  };
+
+  it('소·중·대 3종을 한 번에 예약하면 행 3개가 같은 그룹으로 생성되고 전부 배정된다', async () => {
+    const { service, tx } = setupThreeTypeStore();
+
+    tx.reservations.findMany.mockResolvedValue([
+      pendingRow('res_a', reservations_requested_storage_type.s),
+      pendingRow('res_b', reservations_requested_storage_type.m),
+      pendingRow('res_c', reservations_requested_storage_type.l),
+    ]);
+    tx.storages.findFirst
+      .mockResolvedValueOnce({ id: 'storage_s1', number: 'S1' })
+      .mockResolvedValueOnce({ id: 'storage_m1', number: 'M1' })
+      .mockResolvedValueOnce({ id: 'storage_l1', number: 'L1' });
+
+    const result = await service.createReservation(createRequest);
+
+    const createManyArg = tx.reservations.createMany.mock.calls[0][0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(createManyArg.data).toHaveLength(3);
+    expect(createManyArg.data.map((row) => row.requested_storage_type)).toEqual(
+      [
+        reservations_requested_storage_type.s,
+        reservations_requested_storage_type.m,
+        reservations_requested_storage_type.l,
+      ],
+    );
+    expect(createManyArg.data.map((row) => row.total_amount)).toEqual([
+      9000, 6000, 8000,
+    ]);
+    expect(createManyArg.data[0].reservation_group_id).toBe(
+      createManyArg.data[0].id,
+    );
+    expect(
+      new Set(createManyArg.data.map((row) => row.reservation_group_id)).size,
+    ).toBe(1);
+
+    expect(tx.reservations.update).toHaveBeenCalledTimes(3);
+    expect(tx.reservations.update).toHaveBeenCalledWith({
+      where: { id: 'res_c' },
+      data: expect.objectContaining({
+        status: reservations_status.confirmed,
+        storage_id: 'storage_l1',
+        storage_number: 'L1',
+      }),
+    });
+
+    expect(result.reservation.bagCount).toBe(4);
+    expect(result.reservation.totalAmount).toBe(23000);
+    expect(result.reservation.items).toHaveLength(3);
+  });
+
+  it('한 규격만 정원이 차도 그룹 전체가 거부되고 행이 만들어지지 않는다', async () => {
+    const { service, prisma, tx } = setupThreeTypeStore();
+
+    // 대형 정원(xl_max_capacity) 3이 이미 소진된 상태
+    prisma.reservations.groupBy.mockResolvedValue([
+      {
+        requested_storage_type: reservations_requested_storage_type.l,
+        _sum: { bag_count: 3 },
+      },
+    ]);
+
+    await expect(
+      service.createReservation(createRequest),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'CAPACITY_EXCEEDED',
+        details: expect.objectContaining({
+          storageType: reservations_requested_storage_type.l,
+          failedTypes: [reservations_requested_storage_type.l],
+          failures: [
+            expect.objectContaining({
+              storageType: reservations_requested_storage_type.l,
+              maxCapacity: 3,
+              currentCount: 3,
+              requested: 1,
+            }),
+          ],
+        }),
+      }),
+    });
+    expect(tx.reservations.createMany).not.toHaveBeenCalled();
+  });
+
+  it('두 규격이 동시에 부족하면 failedTypes에 둘 다 담긴다', async () => {
+    const { service, prisma } = setupThreeTypeStore();
+
+    prisma.reservations.groupBy.mockResolvedValue([
+      {
+        requested_storage_type: reservations_requested_storage_type.s,
+        _sum: { bag_count: 8 },
+      },
+      {
+        requested_storage_type: reservations_requested_storage_type.l,
+        _sum: { bag_count: 3 },
+      },
+    ]);
+
+    await expect(
+      service.createReservation(createRequest),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'CAPACITY_EXCEEDED',
+        details: expect.objectContaining({
+          storageType: reservations_requested_storage_type.s,
+          failedTypes: [
+            reservations_requested_storage_type.s,
+            reservations_requested_storage_type.l,
+          ],
+        }),
+      }),
+    });
+  });
+
+  it('레거시 특대(xl) 잔존 예약이 대형 정원을 차지하면 대형 포함 요청만 거부된다', async () => {
+    const { service, prisma } = setupThreeTypeStore();
+
+    // 대형 정원 3 = l 1건 + xl 2건 → 소·중은 통과, 대형만 실패
+    prisma.reservations.groupBy.mockResolvedValue([
+      {
+        requested_storage_type: reservations_requested_storage_type.l,
+        _sum: { bag_count: 1 },
+      },
+      {
+        requested_storage_type: reservations_requested_storage_type.xl,
+        _sum: { bag_count: 2 },
+      },
+    ]);
+
+    await expect(
+      service.createReservation(createRequest),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: 'CAPACITY_EXCEEDED',
+        details: expect.objectContaining({
+          failedTypes: [reservations_requested_storage_type.l],
+        }),
+      }),
+    });
+  });
+
+  it('트랜잭션 안의 2차 용량 체크가 동시 예약 경쟁을 잡는다', async () => {
+    const { service, tx } = setupThreeTypeStore();
+
+    // 1차(트랜잭션 밖)는 통과했지만 그 사이 대형이 소진된 상태
+    tx.reservations.groupBy.mockResolvedValue([
+      {
+        requested_storage_type: reservations_requested_storage_type.l,
+        _sum: { bag_count: 3 },
+      },
+    ]);
+
+    await expect(
+      service.createReservation(createRequest),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CAPACITY_EXCEEDED' }),
+    });
+    expect(tx.reservations.createMany).not.toHaveBeenCalled();
+  });
+
+  it('대형 보관함만 없으면 대형 행만 접수 대기로 남고 나머지는 확정된다', async () => {
+    const { service, tx } = setupThreeTypeStore();
+
+    tx.reservations.findMany.mockResolvedValue([
+      pendingRow('res_a', reservations_requested_storage_type.s),
+      pendingRow('res_b', reservations_requested_storage_type.m),
+      pendingRow('res_c', reservations_requested_storage_type.l),
+    ]);
+    tx.storages.findFirst
+      .mockResolvedValueOnce({ id: 'storage_s1', number: 'S1' })
+      .mockResolvedValueOnce({ id: 'storage_m1', number: 'M1' })
+      .mockResolvedValueOnce(null);
+
+    await service.createReservation(createRequest);
+
+    expect(tx.reservations.update).toHaveBeenCalledTimes(2);
+    const updatedIds = (
+      tx.reservations.update.mock.calls as Array<[{ where: { id: string } }]>
+    ).map((call) => call[0].where.id);
+    expect(updatedIds).toEqual(['res_a', 'res_b']);
+  });
+
+  it('enabled가 NULL인 규격은 켜진 것으로 보고 판매한다 (스키마 기본값과 동일)', async () => {
+    const { service, prisma, tx } = setupThreeTypeStore();
+
+    const nullEnabledSettings = { ...fullSettings, xl_enabled: null };
+    prisma.store_settings.findUnique.mockResolvedValue(nullEnabledSettings);
+    tx.store_settings.findUnique.mockResolvedValue(nullEnabledSettings);
+
+    await service.createReservation(createRequest);
+
+    const createManyArg = tx.reservations.createMany.mock.calls[0][0] as {
+      data: Array<Record<string, unknown>>;
+    };
+    expect(createManyArg.data).toHaveLength(3);
+  });
+
+  it('생성·자동승인 트랜잭션에 여유 타임아웃을 준다', async () => {
+    const { service, prisma } = setupThreeTypeStore();
+
+    await service.createReservation(createRequest);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    for (const call of prisma.$transaction.mock.calls as Array<
+      [unknown, { timeout: number }]
+    >) {
+      expect(call[1]).toEqual({ timeout: 15_000 });
+    }
   });
 });

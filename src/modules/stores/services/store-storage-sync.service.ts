@@ -3,6 +3,7 @@ import { Prisma, storages_status, storages_type } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import {
   FROZEN_STORAGE_PRICES,
+  isStorageTypeEnabled,
   SELLABLE_STORAGE_TYPES,
   STORAGE_SETTINGS_COLUMNS,
 } from '../../reservations/pricing/reservation-pricing.constants';
@@ -172,7 +173,7 @@ export class StoreStorageSyncService {
       return {
         type: storages_type[storageType],
         prefix: binding.numberPrefix,
-        enabled: settings[binding.enabled] ?? false,
+        enabled: isStorageTypeEnabled(settings, storageType),
         capacity: settings[binding.capacity] ?? 0,
         pricing: FROZEN_STORAGE_PRICES[storageType],
       };
