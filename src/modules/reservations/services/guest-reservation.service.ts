@@ -43,6 +43,7 @@ import {
 import { normalizeReservationLocale } from '../reservation.constants';
 import {
   BillingStorageType,
+  isStorageTypeEnabled,
   normalizeStorageAssignmentType,
   SELLABLE_STORAGE_TYPES,
   STORAGE_SETTINGS_COLUMNS,
@@ -80,6 +81,10 @@ type CapacityFailure = {
 };
 
 const MAX_BAG_COUNT_PER_TYPE = 10;
+
+// 멀티타입이면 트랜잭션 내 쿼리 수가 타입 수에 비례해 늘어나 Prisma 기본 5초를
+// 넘길 수 있다. store-settings의 설정 저장 트랜잭션과 같은 근거로 여유를 준다.
+const RESERVATION_TX_OPTIONS = { timeout: 15_000 };
 
 /** stores.notification_phones(Json) → 유효한 문자열 배열. 형식이 깨져 있으면 빈 배열. */
 const toPhoneArray = (value: unknown): string[] =>
@@ -224,7 +229,7 @@ export class GuestReservationService {
           });
         }
       }
-    });
+    }, RESERVATION_TX_OPTIONS);
 
     await this.autoApproveGroup(groupId);
 
@@ -316,6 +321,7 @@ export class GuestReservationService {
               reason: 'NO_AVAILABLE_STORAGE',
               reservationId: row.id,
               storeId: row.store_id,
+              storageType: row.requested_storage_type,
             });
             continue;
           }
@@ -323,7 +329,7 @@ export class GuestReservationService {
           throw error;
         }
       }
-    });
+    }, RESERVATION_TX_OPTIONS);
   }
 
   private normalizeItems(
@@ -384,6 +390,8 @@ export class GuestReservationService {
         code: 'CAPACITY_EXCEEDED',
         message: '해당 시간대에 수용 가능한 공간이 부족합니다.',
         details: {
+          storageType: failures[0].storageType,
+          failedTypes: failures.map((failure) => failure.storageType),
           maxCapacity: failures[0].maxCapacity,
           currentCount: failures[0].currentCount,
           requested: failures[0].requested,
@@ -1069,13 +1077,11 @@ export class GuestReservationService {
       return 5;
     }
 
-    const columns = STORAGE_SETTINGS_COLUMNS[assignmentType];
-
-    if (settings[columns.enabled] === false) {
+    if (!isStorageTypeEnabled(settings, assignmentType)) {
       return 0;
     }
 
-    return settings[columns.capacity] ?? 5;
+    return settings[STORAGE_SETTINGS_COLUMNS[assignmentType].capacity] ?? 5;
   }
 
   private isSellableStorageType(

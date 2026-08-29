@@ -66,6 +66,23 @@ export type StorageTypeBinding = {
   numberPrefix: 'S' | 'M' | 'L';
 };
 
+export type StorageEnabledSettings = {
+  m_enabled?: boolean | null;
+  l_enabled?: boolean | null;
+  xl_enabled?: boolean | null;
+};
+
+/**
+ * enabled 컬럼의 NULL은 스키마 기본값(true)으로 해석한다.
+ * 판매(getMaxCapacity)·보관함 동기화(buildStorageConfigs)·설정 응답 매퍼가 이 해석을
+ * 공유해야 한다 — 세 소비처가 NULL을 서로 다르게 읽으면, 화면은 켜져 있는데
+ * 보관함만 maintenance로 강등되어 예약이 접수 상태로 죽는 사고가 난다.
+ */
+export const isStorageTypeEnabled = (
+  settings: StorageEnabledSettings | null | undefined,
+  storageType: BillingStorageType,
+): boolean => settings?.[STORAGE_SETTINGS_COLUMNS[storageType].enabled] ?? true;
+
 const STORAGE_ASSIGNMENT_ALIASES: Partial<
   Record<
     reservations_requested_storage_type,

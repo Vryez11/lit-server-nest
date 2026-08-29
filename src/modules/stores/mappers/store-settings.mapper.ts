@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
-import { FROZEN_STORAGE_PRICES } from '../../reservations/pricing/reservation-pricing.constants';
+import {
+  FROZEN_STORAGE_PRICES,
+  isStorageTypeEnabled,
+} from '../../reservations/pricing/reservation-pricing.constants';
 import { StoreSettingsResponseDto } from '../dto/store-settings.dto';
 
 type StoreSettingsRecord = NonNullable<
@@ -105,9 +108,9 @@ const toStorageSettings = (settings: StoreSettingsRecord) => ({
     description: '특수',
   },
   isExtraSmallEnabled: false,
-  isSmallEnabled: settings.m_enabled ?? true,
-  isMediumEnabled: settings.l_enabled ?? true,
-  isLargeEnabled: settings.xl_enabled ?? true,
+  isSmallEnabled: isStorageTypeEnabled(settings, 's'),
+  isMediumEnabled: isStorageTypeEnabled(settings, 'm'),
+  isLargeEnabled: isStorageTypeEnabled(settings, 'l'),
   isSpecialEnabled: false,
   refrigerationAvailable: false,
   refrigerationHourlyFee: FROZEN_STORAGE_PRICES.s,

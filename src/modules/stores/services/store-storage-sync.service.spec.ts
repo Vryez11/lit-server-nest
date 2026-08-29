@@ -171,4 +171,70 @@ describe('StoreStorageSyncService', () => {
       }),
     );
   });
+
+  it('소·중·대 3종이 각각 S/M/L 접두사와 규격별 요금으로 정확히 생성된다', async () => {
+    const service = new StoreStorageSyncService();
+    const tx = createTx();
+
+    mockExisting(tx, {});
+    tx.storages.updateMany.mockResolvedValue({ count: 0 });
+    tx.storages.createMany.mockResolvedValue({ count: 1 });
+
+    await service.syncFromSettings(
+      tx as never,
+      'store_1',
+      settings({ m_max_capacity: 2, l_max_capacity: 1, xl_max_capacity: 1 }),
+    );
+
+    const created = tx.storages.createMany.mock.calls.flatMap(
+      (
+        call: [
+          { data: { type: storages_type; number: string; pricing: number }[] },
+        ],
+      ) => call[0].data,
+    );
+    // 한 칸 밀린 오프셋: 소형(m_*) 2개, 중형(l_*) 1개, 대형(xl_*) 1개
+    expect(created.map((row) => [row.type, row.number])).toEqual([
+      [storages_type.s, 'S1'],
+      [storages_type.s, 'S2'],
+      [storages_type.m, 'M1'],
+      [storages_type.l, 'L1'],
+    ]);
+    expect(created.map((row) => row.pricing)).toEqual([4500, 4500, 6000, 8000]);
+  });
+
+  it('enabled가 NULL인 규격은 강등하지 않고 정원만큼 유지한다 (NULL=켜짐, 스키마 기본값)', async () => {
+    const service = new StoreStorageSyncService();
+    const tx = createTx();
+
+    // 레거시 설정 행: 화면상 '대형'(xl_enabled)이 NULL인데 L1이 available로 살아 있다
+    mockExisting(tx, {
+      l: [
+        storage('storage_l1', 'L1', storages_type.l, storages_status.available),
+      ],
+    });
+    tx.storages.updateMany.mockResolvedValue({ count: 0 });
+
+    await service.syncFromSettings(
+      tx as never,
+      'store_1',
+      settings({ xl_enabled: null }),
+    );
+
+    expect(tx.storages.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['storage_l1'] } },
+        data: expect.objectContaining({ status: storages_status.maintenance }),
+      }),
+    );
+    // 대형이 켜진 것으로 처리되어 요금 갱신 대상에도 포함된다
+    expect(tx.storages.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          type: storages_type.l,
+          number: { in: ['L1'] },
+        }),
+      }),
+    );
+  });
 });
