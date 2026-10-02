@@ -5,5 +5,9 @@ process.env.JWT_ACCESS_TOKEN_SECRET =
   'test-access-secret-value-over-32-characters';
 process.env.JWT_REFRESH_TOKEN_SECRET =
   'test-refresh-secret-value-over-32-characters';
+process.env.JWT_ADMIN_ACCESS_TOKEN_SECRET =
+  'test-admin-access-secret-value-over-32-characters';
+process.env.JWT_ADMIN_REFRESH_TOKEN_SECRET =
+  'test-admin-refresh-secret-value-over-32-characters';
 process.env.CORS_ORIGIN = 'http://localhost:3000';
 process.env.SWAGGER_ENABLED = 'false';

@@ -9,6 +9,10 @@ import {
   CustomerAccessTokenPayload,
   CustomerRefreshTokenPayload,
 } from '../types/customer-token-payload.type';
+import {
+  AdminAccessTokenPayload,
+  AdminRefreshTokenPayload,
+} from '../types/admin-token-payload.type';
 
 @Injectable()
 export class TokenService {
@@ -75,6 +79,46 @@ export class TokenService {
       {
         secret: this.configService.getOrThrow<string>(
           'JWT_REFRESH_TOKEN_SECRET',
+        ),
+        expiresIn: toSeconds(
+          this.configService.getOrThrow<string>('JWT_REFRESH_TOKEN_EXPIRES_IN'),
+        ),
+      },
+    );
+  }
+
+  // 관리자 토큰은 점주·고객과 다른 시크릿(JWT_ADMIN_*)으로 서명한다.
+  // 점주·고객 시크릿이 유출되어도 관리자 토큰을 위조할 수 없게 하기 위함이다.
+  generateAdminAccessToken(adminId: string, email: string): string {
+    return this.jwtService.sign(
+      {
+        adminId,
+        email,
+        role: 'admin',
+        type: 'access',
+      } satisfies AdminAccessTokenPayload,
+      {
+        secret: this.configService.getOrThrow<string>(
+          'JWT_ADMIN_ACCESS_TOKEN_SECRET',
+        ),
+        expiresIn: toSeconds(
+          this.configService.getOrThrow<string>('JWT_ACCESS_TOKEN_EXPIRES_IN'),
+        ),
+      },
+    );
+  }
+
+  generateAdminRefreshToken(adminId: string, email: string): string {
+    return this.jwtService.sign(
+      {
+        adminId,
+        email,
+        role: 'admin',
+        type: 'refresh',
+      } satisfies AdminRefreshTokenPayload,
+      {
+        secret: this.configService.getOrThrow<string>(
+          'JWT_ADMIN_REFRESH_TOKEN_SECRET',
         ),
         expiresIn: toSeconds(
           this.configService.getOrThrow<string>('JWT_REFRESH_TOKEN_EXPIRES_IN'),
@@ -155,6 +199,48 @@ export class TokenService {
       throw new UnauthorizedException({
         code: 'INVALID_REFRESH_TOKEN',
         message: 'refreshToken이 유효하지 않습니다.',
+      });
+    }
+
+    return payload;
+  }
+
+  verifyAdminAccessToken(token: string): AdminAccessTokenPayload {
+    const payload = this.verify<AdminAccessTokenPayload>(
+      token,
+      'JWT_ADMIN_ACCESS_TOKEN_SECRET',
+    );
+
+    if (
+      payload.type !== 'access' ||
+      payload.role !== 'admin' ||
+      typeof payload.adminId !== 'string' ||
+      payload.adminId.length === 0
+    ) {
+      throw new UnauthorizedException({
+        code: 'TOKEN_INVALID',
+        message: '관리자 Access Token이 유효하지 않습니다.',
+      });
+    }
+
+    return payload;
+  }
+
+  verifyAdminRefreshToken(token: string): AdminRefreshTokenPayload {
+    const payload = this.verify<AdminRefreshTokenPayload>(
+      token,
+      'JWT_ADMIN_REFRESH_TOKEN_SECRET',
+    );
+
+    if (
+      payload.type !== 'refresh' ||
+      payload.role !== 'admin' ||
+      typeof payload.adminId !== 'string' ||
+      payload.adminId.length === 0
+    ) {
+      throw new UnauthorizedException({
+        code: 'TOKEN_INVALID',
+        message: '관리자 Refresh Token이 유효하지 않습니다.',
       });
     }
 

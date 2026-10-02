@@ -17,6 +17,9 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_TOKEN_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_TOKEN_EXPIRES_IN: Joi.string().default('1h'),
   JWT_REFRESH_TOKEN_EXPIRES_IN: Joi.string().default('30d'),
+  // 관리자 토큰은 점주·고객과 다른 시크릿으로 서명한다(상호 위조 방지).
+  JWT_ADMIN_ACCESS_TOKEN_SECRET: Joi.string().min(32).required(),
+  JWT_ADMIN_REFRESH_TOKEN_SECRET: Joi.string().min(32).required(),
 
   CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
   SWAGGER_ENABLED: Joi.boolean().default(true),
@@ -45,7 +48,6 @@ export const envValidationSchema = Joi.object({
     .default(180),
   EMAIL_VERIFICATION_MAX_ATTEMPTS: Joi.number().integer().min(1).default(5),
 
-  ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).required(),
   FEEDBACK_IP_HASH_SECRET: Joi.string().min(32).required(),
 
   // 카카오 REST API 키 (https://developers.kakao.com)

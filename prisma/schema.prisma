@@ -6,6 +6,33 @@ datasource db {
   provider = "mysql"
 }
 
+model admins {
+  id                   String                 @id @db.VarChar(255)
+  email                String                 @unique(map: "uniq_admin_email") @db.VarChar(255)
+  password_hash        String                 @db.VarChar(255)
+  name                 String?                @db.VarChar(100)
+  is_active            Boolean                @default(true)
+  login_count          Int                    @default(0)
+  login_locked_until   DateTime?              @db.DateTime(0)
+  last_login_at        DateTime?              @db.DateTime(0)
+  created_at           DateTime?              @default(now()) @db.Timestamp(0)
+  updated_at           DateTime?              @default(now()) @db.Timestamp(0)
+  admin_refresh_tokens admin_refresh_tokens[]
+}
+
+model admin_refresh_tokens {
+  id         Int       @id @default(autoincrement())
+  admin_id   String    @db.VarChar(255)
+  token      String    @db.VarChar(500)
+  expires_at DateTime  @db.Timestamp(0)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  admins     admins    @relation(fields: [admin_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "admin_refresh_tokens_ibfk_1")
+
+  @@index([admin_id], map: "idx_admin")
+  @@index([expires_at], map: "idx_expires_at")
+  @@index([token(length: 255)], map: "idx_token")
+}
+
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model coupon_policies {
   id              String                        @id @db.VarChar(255)
