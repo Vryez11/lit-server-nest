@@ -31,7 +31,7 @@ DB 스키마만 존재한다. 이 PRD는 현재 구현을 정확히 문서화하
 | **점주(Store)** | JWT(이메일+비밀번호, 이메일 인증코드) | 매장/보관함/설정/PIN, 예약 승인·거절·체크인, 쿠폰 정책, 대시보드 |
 | **로그인 고객(Customer)** | JWT(소셜: kakao 구현, naver/apple 스키마만) | 예약 생성·조회·체크아웃, 쿠폰 신청·사용, 프로필/알림 설정 |
 | **비회원(Guest)** | 무인증 + 전화번호/토큰 검증, Throttle | 예약 생성·조회·취소, 쿠폰 조회·사용 |
-| **관리자(Admin)** | `X-Admin-Token`(`ADMIN_API_TOKEN`, 구 `ADMIN_FEEDBACK_TOKEN` 폴백) | 피드백 조회·응답(F-014), 매장 운영 현황 조회(F-018, 구현 예정) |
+| **관리자(Admin)** | 관리자 JWT(이메일+비밀번호, 가입 API 없음·CLI로 생성, F-019 구현 예정. 현재는 `X-Admin-Token` 정적 토큰) | 피드백 조회·응답(F-014), 매장 운영 현황 조회(F-018, 구현 예정) |
 
 ### 1.4 성공 지표 (제안)
 
@@ -54,8 +54,8 @@ DB 스키마만 존재한다. 이 PRD는 현재 구현을 정확히 문서화하
 
 ## 2. 기능 목록 (MoSCoW)
 
-ID는 `F-001`부터 부여. `F-018`을 제외한 기능은 모두 **구현 완료** 상태다(`F-018`은 PRD 선행 작성 후 구현 예정,
-미구현 로드맵은 §5 참조).
+ID는 `F-001`부터 부여. `F-018`·`F-019`를 제외한 기능은 모두 **구현 완료** 상태다(두 기능은 PRD 선행 작성 후
+구현 예정, 미구현 로드맵은 §5 참조).
 MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 
 | ID | 기능명 | 도메인 / 경로 | MoSCoW | 상태 |
@@ -77,7 +77,8 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 | F-015 | 헬스체크 | `health` | Could | 구현완료 |
 | F-016 | QR 토큰 기반 체크인/체크아웃 | `api/reservations` | Must | 구현완료(비활성) |
 | F-017 | 노쇼 처리 | `api/reservations`, `api/owner-actions` | Must | 구현완료(PR #90) |
-| F-018 | 관리자 매장 운영 현황 조회 | `api/admin/stores` | Should | 구현예정 |
+| F-018 | 관리자 매장 운영 현황 조회 | `api/admin/stores` | Should | 구현예정(F-019 선행) |
+| F-019 | 관리자 인증·계정 | `api/admin/auth` | Must | 구현예정 |
 
 ---
 
@@ -218,8 +219,8 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 
 - ✅ 카테고리는 `feature/issue/praise/other`, 상태는 `reviewing/inProgress/shipped/rejected`다.
 - ✅ 익명 IP는 `FEEDBACK_IP_HASH_SECRET`로 해시되어 저장된다(평문 미저장).
-- ✅ 관리자는 `X-Admin-Token` 헤더로만 피드백 조회·응답이 가능하다.
-- ✅ 검증 가드는 F-018 구현 시 공용 `AdminTokenGuard`(`ADMIN_API_TOKEN`, 구 `ADMIN_FEEDBACK_TOKEN` 폴백)로 교체되며 토큰 값·401 동작은 동일하다.
+- ✅ 관리자 피드백 조회·응답은 현재 `X-Admin-Token`(`ADMIN_FEEDBACK_TOKEN`) 정적 토큰으로 보호된다.
+- ✅ F-019 구현 시 정적 토큰·`ADMIN_FEEDBACK_TOKEN`·`AdminFeedbackTokenGuard`는 제거되고, 관리자 JWT(`AdminAuthGuard`)로만 동작한다.
 
 ### F-015 헬스체크 (`health`)
 **유저 스토리**: 운영자로서 서비스 가용성을 확인하기 위해 헬스 엔드포인트를 호출한다.
@@ -254,11 +255,10 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 **유저 스토리**: 플랫폼 관리자로서 매장별 운영 상태를 파악하기 위해 기간별 매출·예약·노쇼 지표를 매장 단위로 조회한다.
 
 > 📄 **API 명세**(요청/응답 JSON, 지표 SQL 술어, 구현 가이드, 병렬 작업 단위): [`docs/api/admin/store-operations.md`](api/admin/store-operations.md)
-> 상태: **구현 예정** — 아래 수용 기준은 최종 동작 명세이며, 구현·검증 완료 후 §2 상태를 `구현완료`로 확정한다.
+> 상태: **구현 예정** — 아래 수용 기준은 최종 동작 명세이며, 구현·검증 완료 후 §2 상태를 `구현완료`로 확정한다. 인증은 F-019(관리자 인증·계정)에 의존하므로 F-019가 선행된다.
 
 **인증·공통**
-- ✅ 모든 엔드포인트는 `X-Admin-Token` 헤더를 공용 `AdminTokenGuard`로 검증한다. 기대값은 `ADMIN_API_TOKEN`이며 미설정 시 `ADMIN_FEEDBACK_TOKEN`을 폴백한다(둘 중 하나 필수, Joi `.or`). 헤더 누락·불일치·서버 미설정 → 401 `UNAUTHORIZED`.
-- ✅ 토큰 비교는 상수 시간 비교(`crypto.timingSafeEqual`)다.
+- ✅ 모든 엔드포인트는 `Authorization: Bearer <관리자 access 토큰>`을 `AdminAuthGuard`(F-019)로 검증한다. 헤더 누락 → 401 `AUTHENTICATION_REQUIRED`, 토큰 불량·만료 → 401 `TOKEN_INVALID`, 관리자 미존재 → 401 `ADMIN_NOT_FOUND`, 비활성 관리자 → 401 `ADMIN_INACTIVE`. 점주·고객 토큰은 시크릿이 달라 거부된다.
 - ✅ 관리자 API(`api/admin/*`)는 IP당 60 req/min으로 제한되며 초과 시 429 `RATE_LIMIT_EXCEEDED`.
 - ✅ 기간은 `from`/`to`(`YYYY-MM-DD`, KST 일자)이고 기본값은 `to`=오늘, `from`=`to`−29일(30일 창). `from > to` → 400 `INVALID_DATE_RANGE`, 366일 초과 → 400 `DATE_RANGE_TOO_LARGE`, 달력에 없는 날짜 → 400 `INVALID_DATE`, 형식 불량 → 400 `VALIDATION_ERROR`(기존 `getKstDateRange` 재사용).
 - ✅ 존재하지 않는 `storeId` → 404 `STORE_NOT_FOUND`.
@@ -285,6 +285,30 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 
 > ⚠️ **한계(명시)**: 점주가 노쇼 처리하지 않은 미방문 예약은 자동 완료 크론(6시간 유예)에 의해 `completed`가 되어 `noShowRate`가 과소 집계될 수 있다. 부분 환불 금액 컬럼이 없어 `refundedAmount`는 결제 전액 기준이다. 이용일(`start_time`) 기준 보기는 v2 후보(`dateBasis` 파라미터)로 유보한다.
 
+### F-019 관리자 인증·계정 (`api/admin/auth`, 관리자)
+**유저 스토리**: 플랫폼 관리자로서 관리자 API를 안전하게 쓰기 위해 개인 계정으로 로그인해 토큰을 발급받고, 운영자는 관리자 계정을 발급·회수한다.
+
+> 📄 **API 명세**(엔드포인트, 토큰 페이로드, 스키마·마이그레이션, CLI, 구현 가이드): [`docs/api/admin/auth.md`](api/admin/auth.md)
+> 상태: **구현 예정** — F-018의 선행 기능이며, 구현·검증 완료 후 §2 상태를 `구현완료`로 확정한다.
+
+**계정**
+- ✅ 관리자 가입 API는 없다. 계정은 운영자가 서버에서 CLI(`npm run admin -- create --email <email> [--name <name>]`)로 생성하며, 비밀번호는 프롬프트(또는 `--password-stdin`)로 입력받아 bcryptjs 해시로 저장한다(최소 8자).
+- ✅ 같은 CLI로 `deactivate`/`activate`/`reset-password`/`list`를 수행한다. `deactivate`는 `is_active = false`로 바꾸고 해당 관리자의 refresh 토큰을 모두 삭제한다.
+- ✅ 저장소는 `admins`(이메일 유니크, `password_hash`, `name`, `is_active`, `login_count`, `login_locked_until`, `last_login_at`)와 `admin_refresh_tokens`(관리자별 refresh 토큰, 만료 시각) 두 테이블이며 마이그레이션 SQL과 함께 운영 DB에 선반영한다.
+
+**로그인·토큰**
+- ✅ `POST /api/admin/auth/login` — `{ email, password }` → `{ token, refreshToken, expiresIn, admin: { id, email, name, lastLoginAt } }`. access 토큰 1시간, refresh 토큰 30일(점주와 동일 `JWT_*_EXPIRES_IN`).
+- ✅ 이메일 미존재 또는 비밀번호 불일치 → 401 `AUTHENTICATION_FAILED`(`details.remainingAttempts`). 5회 연속 실패 시 10분 잠금 → 401 `ACCOUNT_LOCKED`(`details.lockedUntil`). 로그인 성공 시 실패 카운트·잠금을 초기화하고 `last_login_at`을 갱신한다(F-001과 동일 정책).
+- ✅ `is_active = false`인 관리자는 비밀번호가 맞아도 401 `ADMIN_INACTIVE`로 거부된다.
+- ✅ 관리자 토큰 페이로드는 `{ adminId, email, role: 'admin', type }`이며 점주·고객 토큰과 **다른 시크릿**(`JWT_ADMIN_ACCESS_TOKEN_SECRET`, `JWT_ADMIN_REFRESH_TOKEN_SECRET`, 각 32자 이상 필수)으로 서명한다. 점주·고객 토큰으로는 관리자 API를 호출할 수 없고, 관리자 토큰으로는 점주·고객 API를 호출할 수 없다.
+- ✅ `POST /api/admin/auth/refresh` — `{ refreshToken }` → `{ token, expiresIn }`. 서명 불량 → 401 `TOKEN_INVALID`, DB에 없음 → 401 `TOKEN_NOT_FOUND`, 만료 → 401 `TOKEN_EXPIRED`(해당 행 삭제), 관리자 비활성 → 401 `ADMIN_INACTIVE`.
+- ✅ `POST /api/admin/auth/logout` — `{ refreshToken }`을 삭제한다. 미존재 → 404 `TOKEN_NOT_FOUND`.
+- ✅ `GET /api/admin/auth/me` — access 토큰으로 본인 정보(`id, email, name, isActive, lastLoginAt, createdAt`)를 조회한다.
+- ✅ `PATCH /api/admin/auth/password` — 현재 비밀번호 확인 후 새 비밀번호(최소 8자)로 변경하고, 본인의 refresh 토큰을 모두 삭제한다. 현재 비밀번호 불일치 → 401 `AUTHENTICATION_FAILED`.
+- ✅ `AdminAuthGuard`는 매 요청 서명 검증 후 `admins` 행을 조회해 존재·활성 여부를 확인한다(고객 가드와 동일). Bearer 누락 → 401 `AUTHENTICATION_REQUIRED`, 토큰 불량·만료 → 401 `TOKEN_INVALID`, 관리자 없음 → 401 `ADMIN_NOT_FOUND`, 비활성 → 401 `ADMIN_INACTIVE`.
+- ✅ `api/admin/auth/*`에는 점주 인증과 같은 레이트리밋(`AUTH_RATE_LIMIT_*`, 15분/5회, 이메일 또는 IP 기준)이 적용된다.
+- ✅ 기존 `X-Admin-Token`·`ADMIN_FEEDBACK_TOKEN`·`AdminFeedbackTokenGuard`는 제거되며, 피드백 어드민 API(F-014)도 관리자 JWT로만 동작한다.
+
 ---
 
 ## 4. 비기능 요구사항 (NFR)
@@ -307,13 +331,14 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 | 비회원 availability/상세 | 30 req/min |
 | PIN 검증 | 5 req/min |
 | 소셜 로그인 | 10 req/min |
-| 관리자 API(`api/admin/*`) | 60 req/min (IP, F-018 구현 시 적용) |
+| 관리자 로그인·refresh(`api/admin/auth`) | 15분 / 5회 (`AUTH_RATE_LIMIT_*`, F-019 구현 시 적용) |
+| 관리자 운영 API(`api/admin/stores`) | 60 req/min (IP, F-018 구현 시 적용) |
 
 ### 4.4 보안
 - ✅ 비밀번호는 bcryptjs 해시로 저장된다.
 - ✅ JWT는 Access 1시간 / Refresh 30일 만료다.
 - ✅ 피드백 IP는 `FEEDBACK_IP_HASH_SECRET`로 해시 저장된다.
-- ✅ 관리자 토큰(`X-Admin-Token`)은 상수 시간 비교(`crypto.timingSafeEqual`)로 검증한다(F-018 구현 시 적용).
+- ✅ 관리자 비밀번호는 bcryptjs 해시로 저장되고, 관리자 JWT는 점주·고객과 다른 시크릿(`JWT_ADMIN_*_SECRET`)으로 서명된다(F-019 구현 시 적용).
 
 ### 4.5 로깅
 - ✅ pino 구조화 로그(`LOG_LEVEL`)로 주요 도메인 이벤트를 기록한다.
@@ -342,7 +367,7 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 | 정산(Settlement) | 스키마만 존재(수수료 기본 0.2), 생성·지급 로직 없음. F-018 운영 현황 API도 정산 테이블을 읽지 않음 | `settlement_statements`, `store_settlement_accounts`, `settlement_items/logs/errors` |
 | 웹푸시 리마인더 | 구독 스키마만 존재, 발송 로직 없음 | `push_subscriptions.sent_reminder_at` |
 | 리뷰·고객센터 노출 | 스키마만 존재, 노출/응답 로직 없음 | `reviews`, `support_tickets/messages` |
-| 관리자 쓰기 작업 | 매장 정지·강제 상태 변경·정산 지급 등 관리자 변경 작업. 조회는 F-018(매장 운영 현황)로 이동 | (운영 기능 전반) |
+| 관리자 쓰기 작업 | 매장 정지·강제 상태 변경·정산 지급 등 관리자 변경 작업. 조회는 F-018, 인증·계정은 F-019로 이동. 관리자 계정 관리 API(초대·비활성화)는 CLI로 대체하고 API는 두지 않음 | (운영 기능 전반) |
 | Naver/Apple 소셜 로그인 | enum/스키마만 존재, 검증 로직 없음(kakao만 구현) | `customer_auth_providers` |
 
 ---
