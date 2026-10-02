@@ -252,7 +252,7 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ owner-actions 요약의 `canMarkNoShow`는 위 전이 허용 조건(허용 상태 + `start_time` 경과)과 같은 규칙으로 계산된다.
 
 ### F-018 관리자 매장 운영 현황 조회 (`api/admin/stores`, 관리자)
-**유저 스토리**: 플랫폼 관리자로서 매장별 운영 상태를 파악하기 위해 기간별 매출·예약·노쇼 지표를 매장 단위로 조회한다.
+**유저 스토리**: 플랫폼 관리자로서 어느 매장에 예약이 몰리고 어느 매장이 비는지 한눈에 파악하기 위해, 기간별 매출·예약·노쇼 지표를 매장 단위와 플랫폼 전체 단위로 조회하고 일/주/월 추이와 로케일 분포를 본다.
 
 > 📄 **API 명세**(요청/응답 JSON, 지표 SQL 술어, 구현 가이드, 병렬 작업 단위): [`docs/api/admin/store-operations.md`](api/admin/store-operations.md)
 > 상태: **구현 예정** — 아래 수용 기준은 최종 동작 명세이며, 구현·검증 완료 후 §2 상태를 `구현완료`로 확정한다. 인증은 F-019(관리자 인증·계정)에 의존하므로 F-019가 선행된다.
@@ -264,13 +264,16 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ 존재하지 않는 `storeId` → 404 `STORE_NOT_FOUND`.
 
 **엔드포인트**
-- ✅ `GET /api/admin/stores` — 매장별 지표 목록. 쿼리 `search`(`business_name` 부분일치, ≤100자)·`hasCompletedSetup`(`true|false`)·`sortBy`·`sortOrder`(기본 `desc`)·`page`(기본 1)·`limit`(기본 20, 최대 100). 응답은 `{ items: [{ storeId, businessName, email, businessType, hasCompletedSetup, storeStatus, createdAt, lastLoginAt, metrics }], page, limit, total, meta: { range: { from, to }, totals } }`다.
+- ✅ `GET /api/admin/stores` — 매장별 지표 목록. 쿼리 `search`(`business_name` 부분일치, ≤100자)·`hasCompletedSetup`(`true|false`)·`sortBy`·`sortOrder`(기본 `desc`)·`page`(기본 1)·`limit`(기본 20, 최대 100). 응답은 `{ items: [{ storeId, businessName, email, businessType, hasCompletedSetup, storeStatus, createdAt, lastLoginAt, metrics }], page, limit, total, meta: { range: { from, to }, totals, activeStoreCount, localeBreakdown } }`다.
 - ✅ 기간 내 예약이 0건인 매장도 목록에 포함되며 지표는 0, 비율은 `null`이다.
 - ✅ `sortBy`는 `reservationRevenue`(기본)·`paymentRevenue`·`reservationCount`·`noShowCount`·`noShowRate`·`cancellationRate`·`completionRate`·`businessName`·`createdAt`를 지원한다. 비율 `null`은 정렬 방향과 무관하게 항상 마지막이고, 동률은 `businessName asc, storeId asc`로 고정된다.
 - ✅ `meta.totals`는 필터(`search`/`hasCompletedSetup`) 적용 후 **전체 매장**의 합계이며(현재 페이지 합이 아님) 비율은 합산 분자/분모로 재계산한다.
+- ✅ `meta.activeStoreCount`는 필터 적용 후 매장 중 기간 내 `reservationCount ≥ 1`인 매장 수다. `total − activeStoreCount`가 예약이 없는 매장 수이므로, 관리자는 `sortBy=reservationCount&sortOrder=asc`와 함께 예약이 적거나 없는 매장을 찾을 수 있다.
+- ✅ `meta.localeBreakdown`은 필터 적용 후 전체 매장의 예약 건수를 `reservations.locale`(`ko`/`en`/`ja`/`zh` 등 저장된 값 그대로)별로 센 `[{ locale, reservationCount }]`이다. 건수는 그룹 단위(대표 행의 locale)이며 `reservationCount desc, locale asc`로 정렬하고, 예약이 없으면 빈 배열이다.
 - ✅ `storeStatus`는 `store_status` 테이블의 최신 행(`updated_at desc`) 값이며 행이 없으면 `closed`다.
 - ✅ `GET /api/admin/stores/:storeId/summary` — 매장 정보(`businessName, email, businessType, businessNumber, representativeName, address, phoneNumber, storePhoneNumber, hasCompletedSetup, storeStatus, createdAt, lastLoginAt`)와 기간 `metrics`를 반환한다. 목록과 동일한 집계 함수를 호출하므로 같은 기간의 두 응답 수치는 항상 일치한다.
-- ✅ `GET /api/admin/stores/:storeId/timeseries?granularity=day|month`(기본 `day`) — 기간 내 모든 버킷을 0으로 채워 반환한다. 버킷 필드는 `date`(`YYYY-MM-DD` 또는 `YYYY-MM`), `reservationRevenue`, `paymentRevenue`, `refundedAmount`, `reservationCount`, `completedCount`, `cancelledCount`, `rejectedCount`, `noShowCount`이며 비율은 포함하지 않는다. 양끝 월은 기간에 포함된 일자만 합산한 부분 월일 수 있다.
+- ✅ `GET /api/admin/stores/:storeId/timeseries?granularity=day|week|month`(기본 `day`) — 기간 내 모든 버킷을 0으로 채워 반환한다. 버킷 필드는 `date`(day: `YYYY-MM-DD`, week: 해당 주 월요일의 `YYYY-MM-DD`, month: `YYYY-MM`), `reservationRevenue`, `paymentRevenue`, `refundedAmount`, `reservationCount`, `completedCount`, `cancelledCount`, `rejectedCount`, `noShowCount`이며 비율은 포함하지 않는다. 주는 **월요일 시작(KST)**이고 양끝 주·월은 기간에 포함된 일자만 합산한 부분 주·부분 월일 수 있다.
+- ✅ `GET /api/admin/stores/timeseries?granularity=day|week|month` — **전체 매장 합계**의 추이를 한 번의 호출로 반환한다(매장별 호출 N회 불필요). 버킷 규칙·필드는 위 매장별 추이와 동일하고 응답은 `{ granularity, range: { from, to }, buckets }`다. `search`/`hasCompletedSetup` 필터는 받지 않으며 항상 전체 매장을 합산한다. 이 경로는 `:storeId` 라우트보다 먼저 매칭되어야 한다.
 - ✅ `GET /api/admin/stores/:storeId/reservations` — `status`(`no_show`를 포함한 enum 전체)·`from/to`(`created_at` 기준, 미지정 시 기간 필터 없음)·`search`(고객명/전화번호 부분일치 또는 예약 id 일치)·`page/limit`로 조회한다. 응답은 점주 예약 목록 `ReservationListResponseDto`와 동일 형태(그룹 멤버 N건 개별 노출 + `groupId`, `created_at desc`)다.
 
 **지표 정의** (`metrics` 공통 객체, 목록·요약 동일)
@@ -283,7 +286,7 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ `noShowRate` = `noShowCount / (completedCount + noShowCount) × 100`, `completionRate` = `completedCount / reservationCount × 100`, `cancellationRate` = `(cancelledCount + rejectedCount) / reservationCount × 100`. 소수 1자리로 반올림하고 분모가 0이면 `null`이다.
 - ✅ 정산 테이블(`settlement_*`)과 `daily_statistics`는 읽지 않는다.
 
-> ⚠️ **한계(명시)**: 점주가 노쇼 처리하지 않은 미방문 예약은 자동 완료 크론(6시간 유예)에 의해 `completed`가 되어 `noShowRate`가 과소 집계될 수 있다. 부분 환불 금액 컬럼이 없어 `refundedAmount`는 결제 전액 기준이다. 이용일(`start_time`) 기준 보기는 v2 후보(`dateBasis` 파라미터)로 유보한다.
+> ⚠️ **한계(명시)**: 점주가 노쇼 처리하지 않은 미방문 예약은 자동 완료 크론(6시간 유예)에 의해 `completed`가 되어 `noShowRate`가 과소 집계될 수 있다. 부분 환불 금액 컬럼이 없어 `refundedAmount`는 결제 전액 기준이다. 이용일(`start_time`) 기준 보기는 v2 후보(`dateBasis` 파라미터)로 유보한다. 매장 단위 비율은 예약이 적은 매장에서 표본이 작아 변동이 크므로(예: 4건 중 1건 노쇼 = 25%) 응답은 건수를 함께 주며, 표본 부족 표시는 클라이언트가 한다. 직전 기간 대비 증감·순위 번호는 서버가 계산하지 않고 클라이언트가 같은 API를 기간만 바꿔 호출해 계산한다. 휴면·급감 알림, 요일·시간대 분포, 승인 소요시간 등 점주 운영 데이터가 쌓인 뒤 필요한 판단형 지표는 v2 후보로 유보한다.
 
 ### F-019 관리자 인증·계정 (`api/admin/auth`, 관리자)
 **유저 스토리**: 플랫폼 관리자로서 관리자 API를 안전하게 쓰기 위해 개인 계정으로 로그인해 토큰을 발급받고, 운영자는 관리자 계정을 발급·회수한다.

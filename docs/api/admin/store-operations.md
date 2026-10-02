@@ -9,9 +9,11 @@
 
 ## 1. 목적·범위
 
-- 플랫폼 관리자가 어드민 페이지에서 **매장별 매출·예약·노쇼**를 기간 단위로 본다.
+- 플랫폼 관리자가 어드민 페이지에서 **매장별·플랫폼 전체 매출·예약·노쇼**를 기간 단위로 보고, 일/주/월 추이와 로케일 분포로 "어느 매장에 예약이 몰리고 어느 매장이 비는지"를 한눈에 파악한다.
 - 이 저장소는 API만 제공한다. 어드민 페이지(프론트)는 별도 저장소에서 이 API를 호출한다.
-- **제외**: 관리자 쓰기 작업(매장 정지, 강제 상태 변경, 정산 지급), 정산 테이블(`settlement_*`) 읽기, `daily_statistics`(코드에서 미사용).
+- **1차 범위의 규모 가정**: 현재 예약은 랜딩(비회원)에서만 들어오고 월 60건 안팎이다. 그래서 일별 매장 추이는 대부분 0~1이고, 매장 단위 비율은 표본이 작다. 주/월 추이, 플랫폼 합계, 건수 중심 노출을 우선하고 성능 최적화(집계 인덱스·기간 상한)는 두지 않는다.
+- **클라이언트 책임**: 순위 번호(`sortBy` 정렬 결과의 인덱스), 직전 기간 대비 증감(같은 API를 기간만 바꿔 2회 호출), 표본 부족 표시(건수가 적을 때 비율 경고)는 서버가 계산하지 않는다. 단, 플랫폼 전체 추이는 매장별 호출 N회가 레이트리밋(60 req/min)에 걸리므로 서버가 한 번에 준다(4.5).
+- **제외(v2 후보)**: 관리자 쓰기 작업(매장 정지, 강제 상태 변경, 정산 지급), 정산 테이블(`settlement_*`) 읽기, `daily_statistics`(코드에서 미사용), 이용일(`start_time`) 기준 보기·요일/시간대 분포, 휴면·급감 매장 알림, 승인 소요시간, 회원/비회원 분포(현재 전부 비회원), 재방문율. 점주 앱 배포 후 데이터가 쌓이면 추가한다.
 
 ---
 
@@ -103,7 +105,8 @@
 
 ## 4. 엔드포인트
 
-베이스 `api/admin/stores`. 전부 `GET`, 전부 `AdminAuthGuard`. 총 4개.
+베이스 `api/admin/stores`. 전부 `GET`, 전부 `AdminAuthGuard`. 총 5개.
+**라우트 선언 순서**: 정적 경로 `GET timeseries`(4.5)를 `GET :storeId/...` 라우트보다 **먼저** 선언한다. 현재는 `:storeId` 단독 라우트가 없어 충돌하지 않지만, 이후 `GET :storeId`가 추가되면 `timeseries`가 `storeId`로 잡히는 것을 막기 위한 정적 경로 우선 원칙이다.
 
 ### 4.1 `GET /api/admin/stores` — 매장별 운영 현황 목록 (메인 테이블)
 
@@ -142,12 +145,22 @@
   "total": 137,                                    // 필터(search/hasCompletedSetup) 적용 후 매장 수(데이터 유무 무관)
   "meta": {
     "range": { "from": "2026-09-01", "to": "2026-09-30" },
-    "totals": { /* StoreOpsMetricsDto — 필터에 걸린 전체 매장 합. 현재 페이지 합이 아님 */ }
+    "totals": { /* StoreOpsMetricsDto — 필터에 걸린 전체 매장 합. 현재 페이지 합이 아님 */ },
+    "activeStoreCount": 9,                         // 필터 적용 후 매장 중 기간 내 reservationCount ≥ 1 인 매장 수. 예약 없는 매장 수 = total − activeStoreCount
+    "localeBreakdown": [                           // 필터 적용 전체 매장, 그룹 단위, reservationCount desc → locale asc. 예약 없으면 []
+      { "locale": "en", "reservationCount": 31 },
+      { "locale": "ko", "reservationCount": 18 },
+      { "locale": "ja", "reservationCount": 9 },
+      { "locale": "zh", "reservationCount": 2 }
+    ]
   }
 }
 ```
 
 `meta.totals`의 비율은 합산 분자/분모로 재계산(가중 평균)한다. 매장별 비율의 단순 평균이 아니다.
+`localeBreakdown`의 `locale`은 `reservations.locale`(VarChar(5), 기본 `ko`) 저장값 그대로이며 서버가 값을 정규화·제한하지 않는다. 합계는 `meta.totals.reservationCount`와 같다.
+
+**"적게 들어오는 매장" 보기**: `sortBy=reservationCount&sortOrder=asc`. 예약 0건 매장도 목록에 포함되므로(지표 0, 비율 `null`) 별도 필터 없이 맨 앞에 온다.
 
 ### 4.2 `GET /api/admin/stores/:storeId/summary` — 매장 상세 요약
 
@@ -185,7 +198,7 @@
 
 | 파라미터 | 타입 | 기본 | 검증 |
 |---|---|---|---|
-| `granularity` | enum | `day` | `day \| month` |
+| `granularity` | enum | `day` | `day \| week \| month` |
 
 **Response** (`AdminStoreTimeseriesResponseDto`)
 
@@ -196,7 +209,7 @@
   "range": { "from": "2026-09-01", "to": "2026-09-30" },
   "buckets": [
     {
-      "date": "2026-09-01",        // day: YYYY-MM-DD, month: YYYY-MM
+      "date": "2026-09-01",        // day: YYYY-MM-DD, week: 해당 주 월요일 YYYY-MM-DD, month: YYYY-MM
       "reservationRevenue": 120000,
       "paymentRevenue": 90000,
       "refundedAmount": 0,
@@ -210,9 +223,10 @@
 }
 ```
 
-- 범위 내 모든 버킷을 **0으로 채워** 반환한다(`range.dates` 사용; `month`는 `dates.map(d => d.slice(0, 7))` 유니크). 최대 366개(day) / 13개(month).
+- 범위 내 모든 버킷을 **0으로 채워** 반환한다(`range.dates` 사용; `week`는 `dates.map(kstWeekStart)` 유니크, `month`는 `dates.map(d => d.slice(0, 7))` 유니크). 최대 366개(day) / 53개(week) / 13개(month).
+- **주 규칙**: 월요일 시작(KST). `kstWeekStart('YYYY-MM-DD')`는 `Date.UTC`로 파싱해 `(getUTCDay() + 6) % 7`일을 빼 월요일 일자를 돌려주는 순수 함수다(타임존 영향 없음). 예: `2026-09-02`(수) → `2026-08-31`(월).
 - 비율은 버킷에 넣지 않는다(일 단위 분모가 작아 노이즈가 큼. 필요하면 클라이언트가 합산 후 계산).
-- 양끝 월은 부분 월일 수 있다(범위에 포함된 일자만 합산).
+- 양끝 주·월은 부분 주·부분 월일 수 있다(범위에 포함된 일자만 합산). 예: `from=2026-09-02`이면 첫 주 버킷 `2026-08-31`은 9/2~9/6만 합산.
 
 ### 4.4 `GET /api/admin/stores/:storeId/reservations` — 매장 예약 목록(관리자)
 
@@ -229,9 +243,27 @@
 
 구현: `ReservationQueryService`는 모듈 외부로 export되지 않으므로 export를 늘리지 않고, admin 서비스에서 Prisma를 직접 조회한 뒤 `toReservationResponse`(`src/modules/reservations/mappers/reservation.mapper.ts`, 순수 함수)를 import해 매핑한다. 매장 존재 확인은 `getStoreOrThrow` → 404.
 
-### 4.5 플랫폼 합계
+### 4.5 `GET /api/admin/stores/timeseries` — 플랫폼 전체 추이
 
-별도 엔드포인트 없음. 4.1 응답의 `meta.totals`가 필터 적용 전체 매장 합계이며, `search` 없이 호출하면 플랫폼 전체다.
+전체 매장 합계의 추이를 **한 번의 호출**로 준다. 매장별 `timeseries`를 매장 수만큼 호출하면 60 req/min 제한에 걸리고 서버 부하도 매장 수배가 되기 때문이다.
+
+**Query**: `AdminDateRangeQueryDto`(`from`, `to`) + `granularity`(`day | week | month`, 기본 `day`). 필터(`search`, `hasCompletedSetup`)는 받지 않는다 — 항상 전체 매장 합산이며, 미정의 쿼리 키는 `forbidNonWhitelisted`로 400 `VALIDATION_ERROR`.
+
+**Response** (`AdminPlatformTimeseriesResponseDto`)
+
+```jsonc
+{
+  "granularity": "week",
+  "range": { "from": "2026-09-01", "to": "2026-09-30" },
+  "buckets": [ /* 4.3과 동일한 버킷 객체. 전체 매장 합계 */ ]
+}
+```
+
+- 버킷 키·0 채움·부분 주/월 규칙은 4.3과 동일하다. 응답에 `storeId`는 없다.
+- 집계 술어는 5장과 같고 `store_id` 조건만 없다. 같은 기간 4.1 `meta.totals`(필터 없음)의 `reservationCount`·`reservationRevenue` 등은 버킷 합계와 일치해야 한다(테스트로 고정).
+- 구현은 4.3의 버킷 누적 로직을 `storeId` 없이 재사용한다(7.4).
+
+> 플랫폼 합계(필터 없음)는 4.1 `meta.totals`로도 얻을 수 있으나, 추이(버킷)는 이 엔드포인트만 제공한다.
 
 ---
 
@@ -306,7 +338,7 @@ src/modules/admin/admin-stores.controller.ts                             # 신�
 src/modules/admin/dto/admin-store-ops.dto.ts                             # 신규 (Query/Response DTO 전부)
 src/modules/admin/services/admin-store.service.ts                        # 매장 조회/404, store_status 최신값
 src/modules/admin/services/admin-store-metrics.service.ts                # 목록 + 요약 (DB groupBy)
-src/modules/admin/services/admin-store-timeseries.service.ts             # 추이 (행 조회 → 메모리 버킷)
+src/modules/admin/services/admin-store-timeseries.service.ts             # 추이 4.3(매장)·4.5(플랫폼) 공용 (행 조회 → 메모리 버킷, storeId 선택)
 src/modules/admin/services/admin-store-reservations.service.ts           # 예약 목록
 src/modules/admin/utils/store-ops-metrics.util.ts (+ .spec.ts)           # 순수 함수: 대표행 where, 비율, 버킷 키
 src/app.module.ts                                                        # AdminModule 등록
@@ -314,7 +346,7 @@ src/app.module.ts                                                        # Admin
 
 인증·계정(F-019) 관련 파일(`admin-auth` 모듈, 스키마·마이그레이션, CLI, 환경변수, feedbacks 이관)은 auth.md §7에 있다.
 
-### 7.2 목록/요약 쿼리 전략 (N+1 없음, 요청당 최대 6쿼리, 모두 `Promise.all`)
+### 7.2 목록/요약 쿼리 전략 (N+1 없음, 요청당 최대 7쿼리, 모두 `Promise.all`)
 
 1. `stores.findMany({ where: { search, setup 필터 }, select: { id, business_name, email, business_type, has_completed_setup, created_at, last_login_at } })` — 필터된 전체 매장. 정렬 키가 집계값이므로 페이지 슬라이스 전에 전부 필요(매장 수는 수백 규모 가정).
 2. `store_status.findMany({ where: { store_id: { in: ids } }, orderBy: { updated_at: 'desc' } })` → 메모리에서 매장별 첫 행.
@@ -322,6 +354,9 @@ src/app.module.ts                                                        # Admin
 4. `reservations.groupBy({ by: ['store_id', 'status'], where: { created_at: { gte, lt }, ...REPRESENTATIVE, ...storeScope }, _count: { _all: true } })`
 5. `payments.groupBy({ by: ['store_id'], where: { status: { in: ['SUCCESS', 'CANCELED', 'REFUNDED'] }, paid_at: { gte, lt }, ...storeScope }, _sum: { amount_total: true }, _count: { _all: true } })`
 6. `payments.groupBy({ by: ['store_id'], where: { status: { in: ['CANCELED', 'REFUNDED'] }, canceled_at: { gte, lt }, ...storeScope }, _sum: { amount_total: true } })`
+7. (목록만, 요약은 생략) `reservations.groupBy({ by: ['locale'], where: { created_at: { gte, lt }, ...REPRESENTATIVE, ...storeScope }, _count: { _all: true } })` → `meta.localeBreakdown`(`reservationCount desc, locale asc`).
+
+`meta.activeStoreCount`는 4번 결과 맵에서 `reservationCount ≥ 1`인 매장 수를 세어 얻는다(추가 쿼리 없음).
 
 `storeScope`는 `search`/`hasCompletedSetup`이 있을 때만 `{ store_id: { in: ids } }`, 없으면 생략(전체). 메모리에서 `Map<storeId, …>`로 머지 → 매장당 `metrics` 산출(없으면 0/`null`) → 정렬 → `slice((page-1)*limit, page*limit)`. 요약(4.2)은 같은 함수를 `storeIds = [storeId]`로 호출.
 
@@ -360,13 +395,17 @@ payments.findMany({
 });
 ```
 
-버킷 키 = `getKstDateString(row.created_at)`(day) / `.slice(0, 7)`(month). `range.dates`로 0 채움 후 누적.
+버킷 키 = `getKstDateString(row.created_at)`(day) / `kstWeekStart(그 일자)`(week) / `.slice(0, 7)`(month). `range.dates`로 0 채움 후 누적. payments의 `paid_at`·`canceled_at`도 같은 키 함수로 각자의 일자를 버킷에 넣는다.
+
+**플랫폼 추이(4.5)**: 위 두 쿼리에서 `store_id` 조건만 뺀 같은 함수를 호출한다(`storeId?: string`). 전체 매장 × 기간의 행을 읽지만 현재 규모(월 60건 안팎)에서는 문제가 없다. 예약이 월 수만 건 단위로 늘면 일 단위 기간 상한(예: 92일) 또는 DB 집계(raw SQL)를 재검토한다.
 
 ### 7.5 예약 목록
 
 `reservations.count` + `findMany({ skip, take, orderBy: { created_at: 'desc' } })`(저장소 관례) → `toReservationResponse` 매핑. `where`는 `store_id` + 선택적 `status` + 선택적 `created_at` 범위 + 선택적 `search OR`.
 
-### 7.6 인덱스 권고 (기능 블로커 아님)
+### 7.6 인덱스 권고 (기능 블로커 아님, 1차 범위에서는 미적용)
+
+현재 예약 규모(월 60건 안팎)에서는 인덱스 없이도 충분하다. 점주 앱 배포 후 예약이 늘어 느려질 때 아래를 적용한다.
 
 - `reservations(store_id, created_at)` — 현재 `created_at` 관련 인덱스 없음(`idx_res_phone_created`는 선행 컬럼이 phone). 4.2/4.3/4.4(단일 매장 + `created_at` 범위)에 직접 적중. 4.1(전 매장 groupBy)은 리딩 컬럼 불일치로 풀스캔이지만 테이블 규모상 허용. 느리면 `(created_at)` 단일 인덱스 추가 검토.
 - `payments`는 `(store_id, paid_at)`이 이미 있다. `canceled_at` 인덱스 없음 → 환불 쿼리 스캔(테이블 소규모, 허용).
@@ -380,7 +419,7 @@ CREATE INDEX idx_store_created ON reservations (store_id, created_at);
 ### 7.7 성능 메모
 
 - 4.1은 매장 전체를 메모리 정렬한다. 매장 수가 수천을 넘기면 `search` 없는 요청의 `IN` 생략 + 매장 10k 상한 경고 로그 정도로 충분. 캐시는 v1 미도입.
-- 4.3은 `select` 최소 컬럼만 가져온다.
+- 4.3·4.5는 `select` 최소 컬럼만 가져온다.
 
 ---
 
@@ -391,9 +430,9 @@ CREATE INDEX idx_store_created ON reservations (store_id, created_at);
 | 스펙 파일 | 검증 항목 |
 |---|---|
 | 인증 관련 스펙(`AdminAuthGuard`, `AdminAuthService`) | auth.md §10 참조 |
-| `src/modules/admin/utils/store-ops-metrics.util.spec.ts` | `representativeReservationWhere` 형태 / `rate(0, 0) === null`, `rate(1, 3) === 33.3` / `coalesceStatus(null) === 'pending'` / 버킷 키 KST 경계(`2026-09-01T14:59:59Z → 2026-09-01`, `15:00:00Z → 2026-09-02`) / month 키 |
-| `src/modules/admin/services/admin-store-metrics.service.spec.ts` | groupBy 결과 머지 + 데이터 없는 매장 0/`null` 채움 / 불변식(`reservationCount` = 상태 합) / `sortBy` 각 키 + `null` 항상 마지막 / 2차 정렬 / 페이지 슬라이스·`total` / `search` → `business_name contains` + `store_id in` / `where`에 `payment_status: 'paid'`·`created_at` 범위·REP 조각 포함 / `meta.totals` 가중 재계산 / 요약 404 / `DATE_RANGE_TOO_LARGE` 전파 / `storeStatus` 기본 `closed` |
-| `src/modules/admin/services/admin-store-timeseries.service.spec.ts` | 범위 전체 0 채움(day/month) / 대표 행만 카운트, 매출은 전 행 / payments `paid_at`·`canceled_at` 분리 집계 / 404 |
+| `src/modules/admin/utils/store-ops-metrics.util.spec.ts` | `representativeReservationWhere` 형태 / `rate(0, 0) === null`, `rate(1, 3) === 33.3` / `coalesceStatus(null) === 'pending'` / 버킷 키 KST 경계(`2026-09-01T14:59:59Z → 2026-09-01`, `15:00:00Z → 2026-09-02`) / month 키 / `kstWeekStart`(`2026-09-02` 수 → `2026-08-31`, `2026-08-31` 월 → 자기 자신, `2026-09-06` 일 → `2026-08-31`, `2026-09-07` 월 → `2026-09-07`) |
+| `src/modules/admin/services/admin-store-metrics.service.spec.ts` | groupBy 결과 머지 + 데이터 없는 매장 0/`null` 채움 / 불변식(`reservationCount` = 상태 합) / `sortBy` 각 키 + `null` 항상 마지막 / 2차 정렬 / 페이지 슬라이스·`total` / `search` → `business_name contains` + `store_id in` / `where`에 `payment_status: 'paid'`·`created_at` 범위·REP 조각 포함 / `meta.totals` 가중 재계산 / 요약 404 / `DATE_RANGE_TOO_LARGE` 전파 / `storeStatus` 기본 `closed` / `meta.activeStoreCount`(예약 0건 매장 제외, `total − active` = 예약 없는 매장 수) / `meta.localeBreakdown` 그룹 단위 집계·정렬(`count desc, locale asc`)·합계 = `totals.reservationCount`·예약 없으면 `[]` |
+| `src/modules/admin/services/admin-store-timeseries.service.spec.ts` | 범위 전체 0 채움(day/week/month) / 주 버킷 키 = 월요일, 양끝 부분 주 합산 / 대표 행만 카운트, 매출은 전 행 / payments `paid_at`·`canceled_at` 분리 집계 / 404(매장별) / **플랫폼 추이**: `storeId` 없이 전 매장 합산, `where`에 `store_id` 조건 없음, 버킷 합계가 `reservationCount`·`reservationRevenue` 총합과 일치, 필터 쿼리 키는 거부 |
 | `src/modules/admin/services/admin-store-reservations.service.spec.ts` | `status`/`from,to`(`created_at`)/`search` where 조합 / 범위 미지정 시 `created_at` 필터 없음 / `toReservationResponse` 사용 / `page, limit, total` / 404 |
 | (선택) `test/admin-stores.e2e-spec.ts` | Bearer 없이 401, 로그인 후 발급 토큰으로 200. 기존 e2e가 DB 연결을 요구하면 보류 |
 
@@ -404,9 +443,9 @@ CREATE INDEX idx_store_created ON reservations (store_id, created_at);
 | 순서 | PR | 내용 | 의존 |
 |---|---|---|---|
 | 1 | PR-1 관리자 인증·계정(F-019) | `admins`·`admin_refresh_tokens` 마이그레이션, `admin-auth` 모듈(login/refresh/logout/me/password + `AdminAuthGuard`), CLI, `JWT_ADMIN_*` 환경변수, feedbacks 이관·정적 토큰 제거. 상세 auth.md §9 | 운영 DB 선반영 필요(선행) |
-| 2 | PR-2 뼈대 | `AdminModule`, `admin-stores.controller`(라우트 4개 골격), DTO 전부, `store-ops-metrics.util` + spec, `admin-store.service`(404·storeStatus) | PR-1(가드 의존) |
+| 2 | PR-2 뼈대 | `AdminModule`, `admin-stores.controller`(라우트 5개 골격, `timeseries` 정적 경로 먼저 선언), DTO 전부, `store-ops-metrics.util` + spec, `admin-store.service`(404·storeStatus) | PR-1(가드 의존) |
 | 3a | PR-3 목록/요약 | `admin-store-metrics.service` + spec, 4.1·4.2 연결 | PR-2 |
-| 3b | PR-4 추이 | `admin-store-timeseries.service` + spec, 4.3 연결 | PR-2 (3a와 병렬) |
+| 3b | PR-4 추이 | `admin-store-timeseries.service` + spec, 4.3(매장)·4.5(플랫폼) 연결, `kstWeekStart` util | PR-2 (3a와 병렬) |
 | 3c | PR-5 예약 목록 | `admin-store-reservations.service` + spec, 4.4 연결 | PR-2 (3a·3b와 병렬) |
-| 4 | PR-6 인덱스 | 7.6 마이그레이션 SQL + `schema.prisma` | DBA 조율 후 별도 |
+| 4 | PR-6 인덱스 | 7.6 마이그레이션 SQL + `schema.prisma` | DBA 조율 후 별도. **1차 범위에서는 보류**(예약 증가 후) |
 | 마감 | PRD 상태 확정 | `docs/README.md` §2 F-018·F-019 `구현예정` → `구현완료`, §1.3·F-014·§4.3·§4.4의 "구현 시 적용"/"현재는 정적 토큰" 문구 정리 | PR-1~5 머지 후 |
