@@ -17,62 +17,32 @@
 
 ## 2. 인증·레이트리밋
 
-### 2.1 `AdminTokenGuard` (공용)
+### 2.1 인증 — 관리자 JWT (`AdminAuthGuard`)
+
+인증·계정 명세는 [`docs/api/admin/auth.md`](auth.md)(F-019)에 있다. 이 문서의 모든 엔드포인트는 그 가드를 그대로 쓴다.
 
 | 항목 | 결정 |
 |---|---|
-| 위치 | `src/common/guards/admin-token.guard.ts` (+ `.spec.ts`). `ConfigService`가 전역(`isGlobal: true`)이라 모듈 의존 없이 어디서든 `@UseGuards` 가능 |
-| 입력 | 헤더 `X-Admin-Token`만 허용. 쿼리스트링 토큰 불허 |
-| 기대값 | `ADMIN_API_TOKEN` → 미설정이면 `ADMIN_FEEDBACK_TOKEN`. 둘 다 설정되면 **`ADMIN_API_TOKEN`만 유효**(구 토큰은 401). "둘 다 허용"이 아니라 "우선순위" |
-| 비교 | `crypto.timingSafeEqual` (길이 선검사 후). 선례: `src/modules/owner-actions/owner-action-token.util.ts` |
-| 실패 | 401 `{ code: 'UNAUTHORIZED', message: 'Unauthorized' }` + `logger.warn({ event: 'admin.auth_failed', path })` 1줄. 성공은 로그 없음 |
-| 미설정 | 기대값이 비어 있으면 무조건 401(fail-closed). 부팅 시 Joi `.or`로 최소 하나는 보장 |
+| 헤더 | `Authorization: Bearer <관리자 access 토큰>` |
+| 가드 | `AdminAuthGuard` (`src/modules/admin-auth/guards/admin-auth.guard.ts`). 서명 검증(`JWT_ADMIN_ACCESS_TOKEN_SECRET`) → `admins` 행 조회(존재·`is_active`) → `request.admin`/`request.adminId` 주입 |
+| 주입 | `@CurrentAdmin()`, `@CurrentAdminId()` (`src/modules/admin-auth/decorators/current-admin.decorator.ts`) |
+| 실패 | Bearer 누락 401 `AUTHENTICATION_REQUIRED` · 서명/만료/페이로드 불량 401 `TOKEN_INVALID` · 관리자 없음 401 `ADMIN_NOT_FOUND` · 비활성 401 `ADMIN_INACTIVE` |
+| 타 액터 토큰 | 점주·고객 토큰은 시크릿이 달라 서명 단계에서 `TOKEN_INVALID` |
+| 선행 | F-019(auth.md §9 PR-1)가 머지되어야 이 문서의 엔드포인트를 보호할 수 있다 |
 
-```ts
-// src/common/guards/admin-token.guard.ts (스케치)
-canActivate(context: ExecutionContext): boolean {
-  const request = context.switchToHttp().getRequest<Request>();
-  const provided = request.header('x-admin-token') ?? '';
-  const expected =
-    this.config.get<string>('ADMIN_API_TOKEN') ||
-    this.config.get<string>('ADMIN_FEEDBACK_TOKEN') ||
-    '';
-  const a = Buffer.from(provided, 'utf8');
-  const b = Buffer.from(expected, 'utf8');
-  if (!expected || a.length !== b.length || !timingSafeEqual(a, b)) {
-    this.logger.warn({ event: 'admin.auth_failed', path: request.path });
-    throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Unauthorized' });
-  }
-  return true;
-}
-```
+### 2.2 기존 피드백 admin 이관
 
-### 2.2 환경변수
+- `src/modules/feedbacks/admin-feedbacks.controller.ts`의 `AdminFeedbackTokenGuard` → `AdminAuthGuard`로 교체.
+- `src/modules/feedbacks/guards/admin-feedback-token.guard.ts` + `.spec.ts` 삭제, `feedbacks.module.ts` provider 제거, `ADMIN_FEEDBACK_TOKEN` 환경변수 삭제(Joi, `.env.example`).
+- 동작 동일(F-014). 이 작업은 auth.md §9 PR-1에 포함된다.
 
-```ts
-// src/config/env.validation.ts
-ADMIN_API_TOKEN: Joi.string().min(32).optional(),
-ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).optional(), // deprecated — ADMIN_API_TOKEN으로 대체
-// ...
-}).or('ADMIN_API_TOKEN', 'ADMIN_FEEDBACK_TOKEN')
-```
+### 2.3 레이트리밋·Swagger
 
-- `.env.example`: `ADMIN_API_TOKEN` 추가, `ADMIN_FEEDBACK_TOKEN`에 "(deprecated)" 주석.
-- `test/setup-env.ts`: e2e를 추가하는 경우 `ADMIN_API_TOKEN` 세팅.
-
-### 2.3 기존 피드백 admin 이관
-
-- `src/modules/feedbacks/admin-feedbacks.controller.ts`의 `AdminFeedbackTokenGuard` → `AdminTokenGuard`로 교체.
-- `src/modules/feedbacks/guards/admin-feedback-token.guard.ts` + `.spec.ts` 삭제, `feedbacks.module.ts` provider 제거.
-- 동작 동일(F-014). 기존 `!==` 비교가 상수 시간 비교로 바뀌는 것 외 변경 없음.
-
-### 2.4 레이트리밋·Swagger
-
-- 컨트롤러 레벨 `@UseGuards(AuthThrottlerGuard, AdminTokenGuard)` + `@Throttle({ default: { limit: 60, ttl: 60_000 } })`.
+- 컨트롤러 레벨 `@UseGuards(AuthThrottlerGuard, AdminAuthGuard)` + `@Throttle({ default: { limit: 60, ttl: 60_000 } })`.
   **가드 순서 중요**: 스로틀러가 먼저여야 401 실패 시도도 카운트된다. 초과 시 429 `RATE_LIMIT_EXCEEDED`.
 - `ThrottlerModule`이 `AuthModule`(15분/5회)과 `FeedbacksModule`(30초/1회) 두 곳에서 `forRoot`되어 전역 기본값이 모호하므로 **admin 컨트롤러에는 반드시 명시적 `@Throttle`**을 둔다. `AdminFeedbacksController`에도 같은 데코레이터를 적용한다(현재 스로틀 없음).
-- `AdminModule`은 `imports: [AuthModule]`로 `AuthThrottlerGuard`를 받는다(`OwnerActionsModule`과 동일 패턴).
-- Swagger: `@ApiTags('Admin Stores')`, `@ApiHeader({ name: 'X-Admin-Token', required: true })`(피드백 admin과 동일).
+- `AdminModule`은 `imports: [AuthModule, AdminAuthModule]`로 `AuthThrottlerGuard`와 `AdminAuthGuard`를 받는다.
+- Swagger: `@ApiTags('Admin Stores')`, `@ApiBearerAuth()`(기존 `addBearerAuth()` 스킴 재사용).
 
 ---
 
@@ -92,7 +62,7 @@ ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).optional(), // deprecated — ADMIN_A
 
 | HTTP | `code` | 조건 |
 |---|---|---|
-| 401 | `UNAUTHORIZED` | 헤더 누락·불일치·서버 토큰 미설정 |
+| 401 | `AUTHENTICATION_REQUIRED` / `TOKEN_INVALID` / `ADMIN_NOT_FOUND` / `ADMIN_INACTIVE` | Bearer 누락 / 토큰 불량·만료·타 액터 토큰 / 관리자 없음 / 비활성 (auth.md 참조) |
 | 400 | `VALIDATION_ERROR` | DTO 검증 실패(형식 불량 날짜, enum 외 값, `limit > 100`, 미정의 쿼리 키 등) |
 | 400 | `INVALID_DATE` | 형식은 맞지만 달력에 없는 날(`2026-02-30`) — util |
 | 400 | `INVALID_DATE_RANGE` | `from > to` — util |
@@ -133,7 +103,7 @@ ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).optional(), // deprecated — ADMIN_A
 
 ## 4. 엔드포인트
 
-베이스 `api/admin/stores`. 전부 `GET`, 전부 `AdminTokenGuard`. 총 4개.
+베이스 `api/admin/stores`. 전부 `GET`, 전부 `AdminAuthGuard`. 총 4개.
 
 ### 4.1 `GET /api/admin/stores` — 매장별 운영 현황 목록 (메인 테이블)
 
@@ -321,7 +291,7 @@ ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).optional(), // deprecated — ADMIN_A
 | 자동 완료 크론(6h 유예, confirmed→completed) | 점주가 노쇼 처리하지 않은 미방문이 `completed`로 잡힘 → `noShowRate` 과소 가능(PRD 한계 항목) |
 | `page` 범위 초과 | `items: []`, `total` 유지 |
 | 정렬 동률 | `businessName asc, storeId asc` |
-| 토큰 미설정 | 전 admin 라우트 401(fail-closed) + Joi 부팅 실패로 사전 차단 |
+| 관리자 비활성화 | 가드가 매 요청 `admins`를 조회하므로 비활성화 즉시 다음 요청부터 401 `ADMIN_INACTIVE`. refresh 토큰은 비활성화 시 CLI가 삭제 |
 | BigInt 직렬화 | `payments.id`(BigInt)는 어떤 응답에도 넣지 않는다(합계는 `amount_total` Int) |
 
 ---
@@ -331,8 +301,7 @@ ADMIN_FEEDBACK_TOKEN: Joi.string().min(32).optional(), // deprecated — ADMIN_A
 ### 7.1 파일 배치
 
 ```
-src/common/guards/admin-token.guard.ts (+ .spec.ts)                     # 신규 (공용)
-src/modules/admin/admin.module.ts                                        # 신규
+src/modules/admin/admin.module.ts                                        # 신규 (imports: AuthModule, AdminAuthModule)
 src/modules/admin/admin-stores.controller.ts                             # 신규
 src/modules/admin/dto/admin-store-ops.dto.ts                             # 신규 (Query/Response DTO 전부)
 src/modules/admin/services/admin-store.service.ts                        # 매장 조회/404, store_status 최신값
@@ -340,13 +309,10 @@ src/modules/admin/services/admin-store-metrics.service.ts                # 목�
 src/modules/admin/services/admin-store-timeseries.service.ts             # 추이 (행 조회 → 메모리 버킷)
 src/modules/admin/services/admin-store-reservations.service.ts           # 예약 목록
 src/modules/admin/utils/store-ops-metrics.util.ts (+ .spec.ts)           # 순수 함수: 대표행 where, 비율, 버킷 키
-src/config/env.validation.ts                                             # ADMIN_API_TOKEN + .or
-.env.example                                                             # ADMIN_API_TOKEN
 src/app.module.ts                                                        # AdminModule 등록
-src/modules/feedbacks/admin-feedbacks.controller.ts                      # 가드 교체 + @Throttle
-src/modules/feedbacks/feedbacks.module.ts                                # 구 가드 provider 제거
-src/modules/feedbacks/guards/admin-feedback-token.guard(.spec).ts        # 삭제
 ```
+
+인증·계정(F-019) 관련 파일(`admin-auth` 모듈, 스키마·마이그레이션, CLI, 환경변수, feedbacks 이관)은 auth.md §7에 있다.
 
 ### 7.2 목록/요약 쿼리 전략 (N+1 없음, 요청당 최대 6쿼리, 모두 `Promise.all`)
 
@@ -424,13 +390,12 @@ CREATE INDEX idx_store_created ON reservations (store_id, created_at);
 
 | 스펙 파일 | 검증 항목 |
 |---|---|
-| `src/common/guards/admin-token.guard.spec.ts` | `ADMIN_API_TOKEN` 일치 허용 / `ADMIN_API_TOKEN` 미설정 시 `ADMIN_FEEDBACK_TOKEN` 폴백 / 둘 다 설정 시 신규 우선(구 토큰은 401) / 헤더 없음·불일치·길이 불일치 401 / 둘 다 미설정 401 / 에러 바디 `{ code: 'UNAUTHORIZED' }` |
+| 인증 관련 스펙(`AdminAuthGuard`, `AdminAuthService`) | auth.md §10 참조 |
 | `src/modules/admin/utils/store-ops-metrics.util.spec.ts` | `representativeReservationWhere` 형태 / `rate(0, 0) === null`, `rate(1, 3) === 33.3` / `coalesceStatus(null) === 'pending'` / 버킷 키 KST 경계(`2026-09-01T14:59:59Z → 2026-09-01`, `15:00:00Z → 2026-09-02`) / month 키 |
 | `src/modules/admin/services/admin-store-metrics.service.spec.ts` | groupBy 결과 머지 + 데이터 없는 매장 0/`null` 채움 / 불변식(`reservationCount` = 상태 합) / `sortBy` 각 키 + `null` 항상 마지막 / 2차 정렬 / 페이지 슬라이스·`total` / `search` → `business_name contains` + `store_id in` / `where`에 `payment_status: 'paid'`·`created_at` 범위·REP 조각 포함 / `meta.totals` 가중 재계산 / 요약 404 / `DATE_RANGE_TOO_LARGE` 전파 / `storeStatus` 기본 `closed` |
 | `src/modules/admin/services/admin-store-timeseries.service.spec.ts` | 범위 전체 0 채움(day/month) / 대표 행만 카운트, 매출은 전 행 / payments `paid_at`·`canceled_at` 분리 집계 / 404 |
 | `src/modules/admin/services/admin-store-reservations.service.spec.ts` | `status`/`from,to`(`created_at`)/`search` where 조합 / 범위 미지정 시 `created_at` 필터 없음 / `toReservationResponse` 사용 / `page, limit, total` / 404 |
-| `src/modules/feedbacks/guards/admin-feedback-token.guard.spec.ts` | **삭제**(케이스는 새 가드 스펙으로 이전) |
-| (선택) `test/admin-stores.e2e-spec.ts` | 헤더 없이 401, 올바른 헤더로 200. 기존 e2e가 DB 연결을 요구하면 보류 |
+| (선택) `test/admin-stores.e2e-spec.ts` | Bearer 없이 401, 로그인 후 발급 토큰으로 200. 기존 e2e가 DB 연결을 요구하면 보류 |
 
 ---
 
@@ -438,10 +403,10 @@ CREATE INDEX idx_store_created ON reservations (store_id, created_at);
 
 | 순서 | PR | 내용 | 의존 |
 |---|---|---|---|
-| 1 | PR-1 가드·env | `AdminTokenGuard` + spec, `ADMIN_API_TOKEN` + Joi `.or`, `.env.example`, feedbacks 컨트롤러 이관·구 가드 삭제·`@Throttle` | 없음(선행, 작음) |
-| 2 | PR-2 뼈대 | `AdminModule`, `admin-stores.controller`(라우트 4개 골격), DTO 전부, `store-ops-metrics.util` + spec, `admin-store.service`(404·storeStatus) | PR-1 |
+| 1 | PR-1 관리자 인증·계정(F-019) | `admins`·`admin_refresh_tokens` 마이그레이션, `admin-auth` 모듈(login/refresh/logout/me/password + `AdminAuthGuard`), CLI, `JWT_ADMIN_*` 환경변수, feedbacks 이관·정적 토큰 제거. 상세 auth.md §9 | 운영 DB 선반영 필요(선행) |
+| 2 | PR-2 뼈대 | `AdminModule`, `admin-stores.controller`(라우트 4개 골격), DTO 전부, `store-ops-metrics.util` + spec, `admin-store.service`(404·storeStatus) | PR-1(가드 의존) |
 | 3a | PR-3 목록/요약 | `admin-store-metrics.service` + spec, 4.1·4.2 연결 | PR-2 |
 | 3b | PR-4 추이 | `admin-store-timeseries.service` + spec, 4.3 연결 | PR-2 (3a와 병렬) |
 | 3c | PR-5 예약 목록 | `admin-store-reservations.service` + spec, 4.4 연결 | PR-2 (3a·3b와 병렬) |
 | 4 | PR-6 인덱스 | 7.6 마이그레이션 SQL + `schema.prisma` | DBA 조율 후 별도 |
-| 마감 | PRD 상태 확정 | `docs/README.md` §2 F-018 `구현예정` → `구현완료`, F-014·§4.3·§4.4의 "구현 시 적용" 문구 정리 | PR-1~5 머지 후 |
+| 마감 | PRD 상태 확정 | `docs/README.md` §2 F-018·F-019 `구현예정` → `구현완료`, §1.3·F-014·§4.3·§4.4의 "구현 시 적용"/"현재는 정적 토큰" 문구 정리 | PR-1~5 머지 후 |
