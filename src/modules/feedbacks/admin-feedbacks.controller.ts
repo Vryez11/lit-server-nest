@@ -8,23 +8,26 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  ApiHeader,
+  ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { AdminAuthGuard } from '../admin-auth/guards/admin-auth.guard';
+import { AuthThrottlerGuard } from '../auth/guards/auth-throttler.guard';
 import {
   AdminFeedbackDto,
   AdminFeedbackListQueryDto,
   AdminFeedbackListResponseDto,
   UpdateFeedbackDto,
 } from './dto/feedback.dto';
-import { AdminFeedbackTokenGuard } from './guards/admin-feedback-token.guard';
 import { FeedbacksService } from './services/feedbacks.service';
 
 @ApiTags('Admin Feedbacks')
-@ApiHeader({ name: 'X-Admin-Token', required: true })
-@UseGuards(AdminFeedbackTokenGuard)
+@ApiBearerAuth()
+@UseGuards(AuthThrottlerGuard, AdminAuthGuard)
+@Throttle({ default: { limit: 60, ttl: 60_000 } })
 @Controller('api/admin/feedbacks')
 export class AdminFeedbacksController {
   constructor(private readonly feedbacksService: FeedbacksService) {}

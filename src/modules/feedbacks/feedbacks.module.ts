@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from '../../common/database/prisma.module';
+import { AdminAuthModule } from '../admin-auth/admin-auth.module';
+import { AuthModule } from '../auth/auth.module';
 import { AdminFeedbacksController } from './admin-feedbacks.controller';
 import { CustomerFeedbacksController } from './customer-feedbacks.controller';
 import { FeedbacksController } from './feedbacks.controller';
-import { AdminFeedbackTokenGuard } from './guards/admin-feedback-token.guard';
 import { FeedbackThrottlerGuard } from './guards/feedback-throttler.guard';
 import { FeedbacksService } from './services/feedbacks.service';
 
@@ -13,6 +14,8 @@ import { FeedbacksService } from './services/feedbacks.service';
   imports: [
     ConfigModule,
     PrismaModule,
+    AuthModule,
+    AdminAuthModule,
     ThrottlerModule.forRoot([
       {
         ttl: 30_000,
@@ -41,10 +44,6 @@ import { FeedbacksService } from './services/feedbacks.service';
     CustomerFeedbacksController,
     AdminFeedbacksController,
   ],
-  providers: [
-    FeedbacksService,
-    FeedbackThrottlerGuard,
-    AdminFeedbackTokenGuard,
-  ],
+  providers: [FeedbacksService, FeedbackThrottlerGuard],
 })
 export class FeedbacksModule {}
