@@ -36,6 +36,8 @@ export const toStoreSettingsResponse = ({
         openTime: timeToString(hours.monday_open) ?? '09:00',
         closeTime: timeToString(hours.monday_close) ?? '22:00',
         dailyHours: toDailyHours(hours),
+        breakTimes: toBreakTimes(hours.break_times),
+        publicHoliday: toPublicHoliday(hours.public_holiday_hours),
         totalSlots: settings?.total_slots ?? 20,
         dailyRateThreshold: settings?.daily_rate_threshold ?? 7,
         autoApproval: settings?.auto_approval ?? false,
@@ -157,6 +159,48 @@ const toDailyHours = (hours: StoreOperatingHoursRecord) => ({
   ),
   일: toDayHours(hours.sunday_open, hours.sunday_close, hours.sunday_operating),
 });
+
+const BREAK_DAYS = ['월', '화', '수', '목', '금', '토', '일'] as const;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const toBreakTimes = (
+  value: Prisma.JsonValue | null | undefined,
+): Record<string, { start: string; end: string } | null> => {
+  const source = isRecord(value) ? value : {};
+  const result: Record<string, { start: string; end: string } | null> = {};
+
+  for (const day of BREAK_DAYS) {
+    const entry = source[day];
+    result[day] =
+      isRecord(entry) &&
+      typeof entry.start === 'string' &&
+      typeof entry.end === 'string'
+        ? { start: entry.start, end: entry.end }
+        : null;
+  }
+
+  return result;
+};
+
+const toPublicHoliday = (
+  value: Prisma.JsonValue | null | undefined,
+): {
+  isOperating: boolean;
+  openTime: string | null;
+  closeTime: string | null;
+} | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    isOperating: value.isOperating !== false,
+    openTime: typeof value.openTime === 'string' ? value.openTime : null,
+    closeTime: typeof value.closeTime === 'string' ? value.closeTime : null,
+  };
+};
 
 const toDayHours = (
   openTime: Date | null,
