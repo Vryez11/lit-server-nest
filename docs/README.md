@@ -31,28 +31,31 @@ DB 스키마만 존재한다. 이 PRD는 현재 구현을 정확히 문서화하
 | **점주(Store)** | JWT(이메일+비밀번호, 이메일 인증코드) | 매장/보관함/설정/PIN, 예약 승인·거절·체크인, 쿠폰 정책, 대시보드 |
 | **로그인 고객(Customer)** | JWT(소셜: kakao 구현, naver/apple 스키마만) | 예약 생성·조회·체크아웃, 쿠폰 신청·사용, 프로필/알림 설정 |
 | **비회원(Guest)** | 무인증 + 전화번호/토큰 검증, Throttle | 예약 생성·조회·취소, 쿠폰 조회·사용 |
-| **관리자(Admin)** | `X-Admin-Token`(`ADMIN_FEEDBACK_TOKEN`) | 피드백 조회·응답(현재 피드백 도메인 한정) |
+| **관리자(Admin)** | `X-Admin-Token`(`ADMIN_API_TOKEN`, 구 `ADMIN_FEEDBACK_TOKEN` 폴백) | 피드백 조회·응답(F-014), 매장 운영 현황 조회(F-018, 구현 예정) |
 
 ### 1.4 성공 지표 (제안)
 
-> 아래 목표값은 모두 제안/TBD이며, 사업팀과 합의 후 확정한다. 측정 출처가 `daily_statistics`인 항목은
-> 실제 집계 테이블로 산출 가능하고, 그 외는 별도 계측이 필요하다.
+> 아래 목표값은 모두 제안/TBD이며, 사업팀과 합의 후 확정한다. `daily_statistics` 테이블은 코드에서 읽거나
+> 쓰지 않으므로 측정 출처가 아니다. 측정 출처가 `reservations` 집계(F-018)인 항목은 관리자 매장 운영 현황
+> API로 산출 가능하고, 그 외는 별도 계측이 필요하다.
 
 | 지표 | 정의 | 목표값(제안/TBD) | 측정 출처 |
 |------|------|------------------|-----------|
 | 비회원→예약 완료 전환율 | 예약 생성 시도 대비 결제·확정 완료 비율 | ≥ 60% (TBD) | 예약 로그/`reservations` |
-| 예약 완료율 | `completed` / 전체 생성 예약 | ≥ 85% (TBD) | `reservations.status`, `daily_statistics` |
+| 예약 완료율 | `completedCount` / `reservationCount`(그룹 단위, F-018 `completionRate`) | ≥ 85% (TBD) | `reservations` 집계(F-018) |
 | 평균 점주 승인 소요시간 | `pending`→`confirmed` 평균 경과시간 | ≤ 10분 (TBD) | `reservations` 타임스탬프 |
-| 매장당 일 예약 수 | 활성 매장 1곳의 일 평균 예약 건수 | ≥ 5건 (TBD) | `daily_statistics` |
-| 보관함 점유율 | 활성 보관함 대비 사용 중 비율 | ≥ 40% (TBD) | `daily_statistics`(점유율) |
+| 매장당 일 예약 수 | 활성 매장 1곳의 일 평균 예약 건수 | ≥ 5건 (TBD) | `reservations` 집계(F-018 `timeseries`) |
+| 보관함 점유율 | 활성 보관함 대비 사용 중 비율 | ≥ 40% (TBD) | `storages.status` 집계(F-012) |
 | 멀티타입 예약 비중 | 2개 이상 타입 그룹 예약 / 전체 예약 그룹 | ≥ 15% (TBD) | `reservation_group_id` 집계 |
-| 예약 취소율 | `cancelled`+`rejected` / 전체 생성 | ≤ 10% (TBD) | `reservations.status`, `daily_statistics` |
+| 예약 취소율 | (`cancelledCount`+`rejectedCount`) / `reservationCount`(F-018 `cancellationRate`) | ≤ 10% (TBD) | `reservations` 집계(F-018) |
+| 노쇼율 | `noShowCount` / (`completedCount`+`noShowCount`)(F-018 `noShowRate`) | ≤ 5% (TBD) | `reservations` 집계(F-018) |
 
 ---
 
 ## 2. 기능 목록 (MoSCoW)
 
-ID는 `F-001`부터 부여. 아래 기능은 모두 **구현 완료** 상태다(미구현 로드맵은 §5 참조).
+ID는 `F-001`부터 부여. `F-018`을 제외한 기능은 모두 **구현 완료** 상태다(`F-018`은 PRD 선행 작성 후 구현 예정,
+미구현 로드맵은 §5 참조).
 MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 
 | ID | 기능명 | 도메인 / 경로 | MoSCoW | 상태 |
@@ -73,6 +76,8 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 | F-014 | 피드백 | `*/feedbacks` | Could | 구현완료 |
 | F-015 | 헬스체크 | `health` | Could | 구현완료 |
 | F-016 | QR 토큰 기반 체크인/체크아웃 | `api/reservations` | Must | 구현완료(비활성) |
+| F-017 | 노쇼 처리 | `api/reservations`, `api/owner-actions` | Must | 구현완료(PR #90) |
+| F-018 | 관리자 매장 운영 현황 조회 | `api/admin/stores` | Should | 구현예정 |
 
 ---
 
@@ -160,9 +165,9 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ `/approve` 승인 시 보관함이 할당된다. 자동 승인되지 못하고 `pending`으로 남은 예약을 점주가 수동 승인하는 용도로도 사용된다.
 - ✅ `/reject` 거절, `/cancel` 취소, `/status` 상태 수정이 동작한다.
 - ✅ `/checkin` 체크인 시 짐 사진 업로드가 가능하다.
-- ✅ 예약 상태는 `pending → confirmed → in_progress → completed`로 전이하며, 분기 상태는 `rejected`(점주 거절)·`cancelled`(취소)다.
+- ✅ 예약 상태는 `pending → confirmed → in_progress → completed`로 전이하며, 분기 상태는 `rejected`(점주 거절)·`cancelled`(취소)·`no_show`(노쇼: `pending/pending_approval/confirmed`에서 보관 시작 시각 경과 후에만 전이, 상세는 F-017)다.
 - ✅ 결제 상태는 `pending / paid / refunded` 중 하나다.
-- ✅ `pending_approval` 상태는 호환용으로만 존재하며 실제 흐름에서 사용되지 않는다.
+- ✅ `pending_approval` 상태는 호환용으로만 존재하며 실제 흐름에서 생성되지 않는다. 단, 노쇼 전이(F-017)의 선행 상태로는 허용된다.
 
 ### F-009 멀티타입 예약 (그룹 분리 + `reservation_group_id`)
 **유저 스토리**: 손님으로서 한 번에 여러 보관 타입을 맡기기 위해 한 요청으로 여러 타입을 예약한다.
@@ -198,8 +203,10 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 ### F-012 운영 대시보드 (`api/dashboard`, 점주)
 **유저 스토리**: 점주로서 운영 현황을 파악하기 위해 요약·기간 통계·실시간 수치를 본다.
 
-- ✅ `summary`(Express 호환), `stats`(기간 `from/to`), `realtime`(오늘 수치)가 조회된다.
-- ✅ 집계 소스는 `daily_statistics`(매출·예약수·완료/취소수·평균기간·점유율)다.
+- ✅ `summary`(Express 호환), `stats`(`period=daily|weekly|monthly|yearly`, 기본 `monthly`), `realtime`(오늘 수치)가 조회된다.
+- ✅ 집계는 `reservations`·`storages`·`reviews`를 실시간으로 집계한다. 매출은 `payment_status = paid`인 예약 행의 `total_amount` 합(`created_at` 기준, 예약 `status` 무관)이고, 예약 건수는 상태별 **행** 수(멀티타입은 타입별 행이 각각 1건)다.
+- ✅ `daily_statistics` 테이블은 읽기·쓰기 모두 하지 않는다.
+- ✅ `stats`의 `reservations.total`에는 `no_show` 행이 포함되지만 별도 필드로 노출되지는 않는다(노쇼 수치는 F-018에서 제공).
 
 ### F-013 주소 검색/지오코딩 (`api/addresses`)
 **유저 스토리**: 사용자로서 매장 위치를 입력하기 위해 주소를 검색하고 좌표를 얻는다.
@@ -212,6 +219,7 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ 카테고리는 `feature/issue/praise/other`, 상태는 `reviewing/inProgress/shipped/rejected`다.
 - ✅ 익명 IP는 `FEEDBACK_IP_HASH_SECRET`로 해시되어 저장된다(평문 미저장).
 - ✅ 관리자는 `X-Admin-Token` 헤더로만 피드백 조회·응답이 가능하다.
+- ✅ 검증 가드는 F-018 구현 시 공용 `AdminTokenGuard`(`ADMIN_API_TOKEN`, 구 `ADMIN_FEEDBACK_TOKEN` 폴백)로 교체되며 토큰 값·401 동작은 동일하다.
 
 ### F-015 헬스체크 (`health`)
 **유저 스토리**: 운영자로서 서비스 가용성을 확인하기 위해 헬스 엔드포인트를 호출한다.
@@ -229,6 +237,53 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ `POST /checkout-by-token` — 토큰으로 예약 조회 후 `completed`로 전이하고 보관함을 해제한다.
 - ✅ 체크아웃 응답에는 고객의 미사용 쿠폰 존재 여부(`hasUnusedCoupon`)가 포함된다.
 - ✅ 토큰 미제공 → 401, 해당 매장에서 예약 미발견 → 404.
+
+### F-017 노쇼 처리 (`api/reservations`, `api/owner-actions`, 점주)
+**유저 스토리**: 점주로서 오지 않은 손님의 예약을 정리하기 위해 예약을 노쇼 처리한다.
+
+- ✅ 진입점은 `PUT /api/reservations/:id/no-show`(점주 JWT, 매장 소유권 검증)와 `POST /api/owner-actions/reservations/:id/no-show`(알림톡 점주 링크, HMAC 토큰 `?t=`) 두 개이며, 두 경로는 동일한 `ReservationNoShowService`를 공유한다.
+- ✅ `pending`·`pending_approval`·`confirmed` 상태에서만 전이되며 그 외 상태 → 409 `INVALID_TRANSITION`.
+- ✅ 대표 예약의 `start_time`이 아직 지나지 않았으면 → 409 `TOO_EARLY_FOR_NO_SHOW`.
+- ✅ 그룹 멤버 전체가 한 트랜잭션에서 일괄 `no_show`로 전이되고(compare-and-swap, 경합으로 일부만 갱신되면 전체 거부), 각 멤버의 보관함은 `available`로 반납된다.
+- ✅ 응답은 점주 API `{ id, status }`, owner-actions `{ id, status, updatedCount }`다.
+- ✅ `no_show`는 종결 상태이며 `payment_status`는 변경하지 않는다. 별도 노쇼 시각 컬럼은 없고 `updated_at`만 갱신된다.
+- ✅ 점주 JWT 경로에서 다른 매장의 예약을 지정하면 → 404 `RESERVATION_NOT_FOUND`.
+- ✅ owner-actions 요약의 `canMarkNoShow`는 위 전이 허용 조건(허용 상태 + `start_time` 경과)과 같은 규칙으로 계산된다.
+
+### F-018 관리자 매장 운영 현황 조회 (`api/admin/stores`, 관리자)
+**유저 스토리**: 플랫폼 관리자로서 매장별 운영 상태를 파악하기 위해 기간별 매출·예약·노쇼 지표를 매장 단위로 조회한다.
+
+> 📄 **API 명세**(요청/응답 JSON, 지표 SQL 술어, 구현 가이드, 병렬 작업 단위): [`docs/api/admin/store-operations.md`](api/admin/store-operations.md)
+> 상태: **구현 예정** — 아래 수용 기준은 최종 동작 명세이며, 구현·검증 완료 후 §2 상태를 `구현완료`로 확정한다.
+
+**인증·공통**
+- ✅ 모든 엔드포인트는 `X-Admin-Token` 헤더를 공용 `AdminTokenGuard`로 검증한다. 기대값은 `ADMIN_API_TOKEN`이며 미설정 시 `ADMIN_FEEDBACK_TOKEN`을 폴백한다(둘 중 하나 필수, Joi `.or`). 헤더 누락·불일치·서버 미설정 → 401 `UNAUTHORIZED`.
+- ✅ 토큰 비교는 상수 시간 비교(`crypto.timingSafeEqual`)다.
+- ✅ 관리자 API(`api/admin/*`)는 IP당 60 req/min으로 제한되며 초과 시 429 `RATE_LIMIT_EXCEEDED`.
+- ✅ 기간은 `from`/`to`(`YYYY-MM-DD`, KST 일자)이고 기본값은 `to`=오늘, `from`=`to`−29일(30일 창). `from > to` → 400 `INVALID_DATE_RANGE`, 366일 초과 → 400 `DATE_RANGE_TOO_LARGE`, 달력에 없는 날짜 → 400 `INVALID_DATE`, 형식 불량 → 400 `VALIDATION_ERROR`(기존 `getKstDateRange` 재사용).
+- ✅ 존재하지 않는 `storeId` → 404 `STORE_NOT_FOUND`.
+
+**엔드포인트**
+- ✅ `GET /api/admin/stores` — 매장별 지표 목록. 쿼리 `search`(`business_name` 부분일치, ≤100자)·`hasCompletedSetup`(`true|false`)·`sortBy`·`sortOrder`(기본 `desc`)·`page`(기본 1)·`limit`(기본 20, 최대 100). 응답은 `{ items: [{ storeId, businessName, email, businessType, hasCompletedSetup, storeStatus, createdAt, lastLoginAt, metrics }], page, limit, total, meta: { range: { from, to }, totals } }`다.
+- ✅ 기간 내 예약이 0건인 매장도 목록에 포함되며 지표는 0, 비율은 `null`이다.
+- ✅ `sortBy`는 `reservationRevenue`(기본)·`paymentRevenue`·`reservationCount`·`noShowCount`·`noShowRate`·`cancellationRate`·`completionRate`·`businessName`·`createdAt`를 지원한다. 비율 `null`은 정렬 방향과 무관하게 항상 마지막이고, 동률은 `businessName asc, storeId asc`로 고정된다.
+- ✅ `meta.totals`는 필터(`search`/`hasCompletedSetup`) 적용 후 **전체 매장**의 합계이며(현재 페이지 합이 아님) 비율은 합산 분자/분모로 재계산한다.
+- ✅ `storeStatus`는 `store_status` 테이블의 최신 행(`updated_at desc`) 값이며 행이 없으면 `closed`다.
+- ✅ `GET /api/admin/stores/:storeId/summary` — 매장 정보(`businessName, email, businessType, businessNumber, representativeName, address, phoneNumber, storePhoneNumber, hasCompletedSetup, storeStatus, createdAt, lastLoginAt`)와 기간 `metrics`를 반환한다. 목록과 동일한 집계 함수를 호출하므로 같은 기간의 두 응답 수치는 항상 일치한다.
+- ✅ `GET /api/admin/stores/:storeId/timeseries?granularity=day|month`(기본 `day`) — 기간 내 모든 버킷을 0으로 채워 반환한다. 버킷 필드는 `date`(`YYYY-MM-DD` 또는 `YYYY-MM`), `reservationRevenue`, `paymentRevenue`, `refundedAmount`, `reservationCount`, `completedCount`, `cancelledCount`, `rejectedCount`, `noShowCount`이며 비율은 포함하지 않는다. 양끝 월은 기간에 포함된 일자만 합산한 부분 월일 수 있다.
+- ✅ `GET /api/admin/stores/:storeId/reservations` — `status`(`no_show`를 포함한 enum 전체)·`from/to`(`created_at` 기준, 미지정 시 기간 필터 없음)·`search`(고객명/전화번호 부분일치 또는 예약 id 일치)·`page/limit`로 조회한다. 응답은 점주 예약 목록 `ReservationListResponseDto`와 동일 형태(그룹 멤버 N건 개별 노출 + `groupId`, `created_at desc`)다.
+
+**지표 정의** (`metrics` 공통 객체, 목록·요약 동일)
+- ✅ 모든 예약 지표는 **`created_at`(KST) 코호트**다. 3월에 생성돼 4월에 노쇼된 예약은 3월에 집계된다(F-012와 같은 기준).
+- ✅ `reservationRevenue` = `payment_status = paid`인 예약 **행**의 `total_amount` 합(멀티타입은 멤버 행 합산 = 그룹 총액). 예약 `status`는 보지 않으므로 paid 후 취소·노쇼된 건도 포함된다(F-012 동일). 환불 구현 시 `payment_status = refunded`로 바뀐 행은 자동 제외된다.
+- ✅ `paymentRevenue` = `payments.status ∈ {SUCCESS, CANCELED, REFUNDED}`이고 `paid_at`이 기간 내인 결제의 `amount_total` 합(총매출). `refundedAmount` = `payments.status ∈ {CANCELED, REFUNDED}`이고 `canceled_at`이 기간 내인 결제의 `amount_total` 합. `paymentCount`는 `paymentRevenue` 대상 결제 건수. 순매출은 클라이언트가 `paymentRevenue − refundedAmount`로 계산한다.
+- ✅ 현장결제 예약은 `payments` 행이 없으므로 `paymentRevenue ≤ reservationRevenue`인 것이 정상이다.
+- ✅ 예약 건수(`reservationCount`와 상태별 건수)는 **그룹 단위**다. 대표 행(`reservation_group_id IS NULL OR reservation_group_id = id`)만 세고, 그룹 상태는 대표 행의 `status`를 따른다(`NULL`은 `pending`으로 간주). F-012는 행 단위이므로 멀티타입 예약 건수는 두 화면이 다를 수 있다.
+- ✅ 상태별 건수는 `pendingCount`(`pending`+`pending_approval`), `activeCount`(`confirmed`+`in_progress`), `completedCount`, `cancelledCount`, `rejectedCount`, `noShowCount`이며 불변식 `reservationCount = 여섯 값의 합`이 항상 성립한다.
+- ✅ `noShowRate` = `noShowCount / (completedCount + noShowCount) × 100`, `completionRate` = `completedCount / reservationCount × 100`, `cancellationRate` = `(cancelledCount + rejectedCount) / reservationCount × 100`. 소수 1자리로 반올림하고 분모가 0이면 `null`이다.
+- ✅ 정산 테이블(`settlement_*`)과 `daily_statistics`는 읽지 않는다.
+
+> ⚠️ **한계(명시)**: 점주가 노쇼 처리하지 않은 미방문 예약은 자동 완료 크론(6시간 유예)에 의해 `completed`가 되어 `noShowRate`가 과소 집계될 수 있다. 부분 환불 금액 컬럼이 없어 `refundedAmount`는 결제 전액 기준이다. 이용일(`start_time`) 기준 보기는 v2 후보(`dateBasis` 파라미터)로 유보한다.
 
 ---
 
@@ -252,11 +307,13 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 | 비회원 availability/상세 | 30 req/min |
 | PIN 검증 | 5 req/min |
 | 소셜 로그인 | 10 req/min |
+| 관리자 API(`api/admin/*`) | 60 req/min (IP, F-018 구현 시 적용) |
 
 ### 4.4 보안
 - ✅ 비밀번호는 bcryptjs 해시로 저장된다.
 - ✅ JWT는 Access 1시간 / Refresh 30일 만료다.
 - ✅ 피드백 IP는 `FEEDBACK_IP_HASH_SECRET`로 해시 저장된다.
+- ✅ 관리자 토큰(`X-Admin-Token`)은 상수 시간 비교(`crypto.timingSafeEqual`)로 검증한다(F-018 구현 시 적용).
 
 ### 4.5 로깅
 - ✅ pino 구조화 로그(`LOG_LEVEL`)로 주요 도메인 이벤트를 기록한다.
@@ -270,7 +327,7 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 - ✅ 전역 prefix는 없으며 경로 prefix(`api/...`)는 각 컨트롤러 데코레이터에서 직접 선언한다.
 - ✅ CORS(`CORS_ORIGIN`, credentials), Swagger(`SWAGGER_ENABLED`), 기본 포트 4000.
 - ✅ 모듈 11개(`src/app.module.ts`): addresses, auth, customer-auth, customer-stores, coupons, dashboard, feedbacks, health, stores, storages, reservations.
-- ✅ DB 마이그레이션은 `prisma db pull` 기반(마이그레이션 디렉토리 없음)이며, 스키마 변경은 DB 우선 → pull 동기화로 진행한다. 프로덕션 변경 시 영향도/롤백 계획을 필수로 한다.
+- ✅ DB 스키마는 DB 우선 → `prisma db pull` 동기화로 관리하며, 변경 SQL은 `prisma/migrations/`에 병행 기록한다. 프로덕션 변경 시 영향도/롤백 계획을 필수로 한다.
 
 ---
 
@@ -282,10 +339,10 @@ MoSCoW 우선순위는 제품 핵심성을 기준으로 한 분류다.
 |-----------|------------------|------------------|
 | 결제(PG/Toss) 연동 | 스키마만 존재, 로직 없음. (예약 생성→결제링크→웹훅→`payment_status=paid` 흐름 미구현) | `payments`, `payment_webhooks` |
 | 알림톡/SMS 발송 | 설정 플래그·수신번호만 존재, 발송 로직 없음 | `notifications`, `stores.notification_phone` |
-| 정산(Settlement) | 스키마만 존재(수수료 기본 0.2), 생성·지급 로직 없음 | `settlement_statements`, `store_settlement_accounts`, `settlement_items/logs/errors` |
+| 정산(Settlement) | 스키마만 존재(수수료 기본 0.2), 생성·지급 로직 없음. F-018 운영 현황 API도 정산 테이블을 읽지 않음 | `settlement_statements`, `store_settlement_accounts`, `settlement_items/logs/errors` |
 | 웹푸시 리마인더 | 구독 스키마만 존재, 발송 로직 없음 | `push_subscriptions.sent_reminder_at` |
 | 리뷰·고객센터 노출 | 스키마만 존재, 노출/응답 로직 없음 | `reviews`, `support_tickets/messages` |
-| 관리자 콘솔 확장 | 현재 관리자 기능은 피드백 도메인에 한정 | (운영 기능 전반) |
+| 관리자 쓰기 작업 | 매장 정지·강제 상태 변경·정산 지급 등 관리자 변경 작업. 조회는 F-018(매장 운영 현황)로 이동 | (운영 기능 전반) |
 | Naver/Apple 소셜 로그인 | enum/스키마만 존재, 검증 로직 없음(kakao만 구현) | `customer_auth_providers` |
 
 ---
