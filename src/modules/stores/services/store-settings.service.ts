@@ -1,8 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../common/database/prisma.service';
 import { FROZEN_STORAGE_PRICES } from '../../reservations/pricing/reservation-pricing.constants';
 import {
+  StoreBreakTimeDto,
+  StoreBreakTimesDto,
   StoreDayHoursDto,
   StoreOperationSettingsDto,
   StoreSettingsResponseDto,
@@ -384,6 +390,14 @@ export class StoreSettingsService {
         operation.holidayEndDate !== undefined
           ? this.toDateOrNull(operation.holidayEndDate)
           : (existing?.holiday_end_date ?? null),
+      break_times:
+        operation.breakTimes !== undefined
+          ? this.buildBreakTimes(operation.breakTimes)
+          : (existing?.break_times ?? Prisma.DbNull),
+      public_holiday_hours:
+        operation.publicHoliday !== undefined
+          ? this.buildPublicHoliday(operation.publicHoliday)
+          : (existing?.public_holiday_hours ?? Prisma.DbNull),
       is_24_hours:
         operation.is24Hours !== undefined
           ? operation.is24Hours
@@ -417,6 +431,49 @@ export class StoreSettingsService {
         ? (this.toNumber(storage.refrigerationMaxCapacity) ?? 0)
         : 0)
     );
+  }
+
+  /** 요일별 브레이크타임을 JSON으로 정규화한다. 시작/종료가 모두 있고 start < end 인 요일만 저장. */
+  private buildBreakTimes(
+    breakTimes: StoreBreakTimesDto,
+  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
+    const result: Record<string, { start: string; end: string }> = {};
+
+    const entries = Object.entries(breakTimes) as Array<
+      [string, StoreBreakTimeDto | null | undefined]
+    >;
+
+    for (const [day, entry] of entries) {
+      const start = this.toTimeString(entry?.start);
+      const end = this.toTimeString(entry?.end);
+      if (!start || !end) {
+        continue;
+      }
+      if (start >= end) {
+        throw new BadRequestException(
+          `${day}요일 브레이크타임 종료 시간은 시작 시간보다 늦어야 합니다.`,
+        );
+      }
+      result[day] = { start, end };
+    }
+
+    return Object.keys(result).length > 0 ? result : Prisma.DbNull;
+  }
+
+  private buildPublicHoliday(
+    day: StoreDayHoursDto,
+  ): Prisma.InputJsonValue | typeof Prisma.DbNull {
+    const isOperating = this.toBoolean(day.isOperating) ?? true;
+    const openTime = this.toTimeString(day.openTime);
+    const closeTime = this.toTimeString(day.closeTime);
+
+    if (isOperating && openTime && closeTime && openTime >= closeTime) {
+      throw new BadRequestException(
+        '공휴일 마감 시간은 오픈 시간보다 늦어야 합니다.',
+      );
+    }
+
+    return { isOperating, openTime, closeTime };
   }
 
   private resolveTime(

@@ -95,6 +95,64 @@ export class StoreDayHoursDto {
   isOperating?: boolean;
 }
 
+export class StoreBreakTimeDto {
+  @ApiPropertyOptional({ example: '15:00' })
+  @IsOptional()
+  @Transform(normalizeTimeValue)
+  @Matches(TIME_PATTERN, { message: 'start는 HH:mm 형식이어야 합니다.' })
+  start?: string;
+
+  @ApiPropertyOptional({ example: '17:00' })
+  @IsOptional()
+  @Transform(normalizeTimeValue)
+  @Matches(TIME_PATTERN, { message: 'end는 HH:mm 형식이어야 합니다.' })
+  end?: string;
+}
+
+export class StoreBreakTimesDto {
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  월?: StoreBreakTimeDto | null;
+
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  화?: StoreBreakTimeDto | null;
+
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  수?: StoreBreakTimeDto | null;
+
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  목?: StoreBreakTimeDto | null;
+
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  금?: StoreBreakTimeDto | null;
+
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  토?: StoreBreakTimeDto | null;
+
+  @ApiPropertyOptional({ type: StoreBreakTimeDto, nullable: true })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimeDto)
+  일?: StoreBreakTimeDto | null;
+}
+
 export class StoreDailyHoursDto {
   @ApiPropertyOptional({ type: StoreDayHoursDto })
   @IsOptional()
@@ -200,6 +258,24 @@ export class StoreOperationSettingsDto {
   @ValidateNested()
   @Type(() => StoreDailyHoursDto)
   dailyHours?: StoreDailyHoursDto;
+
+  @ApiPropertyOptional({
+    type: StoreBreakTimesDto,
+    description: '요일별 브레이크타임. 요일 값이 null이면 해당 요일 브레이크 없음',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreBreakTimesDto)
+  breakTimes?: StoreBreakTimesDto;
+
+  @ApiPropertyOptional({
+    type: StoreDayHoursDto,
+    description: '공휴일 전용 영업시간. isOperating=false면 공휴일 휴무',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => StoreDayHoursDto)
+  publicHoliday?: StoreDayHoursDto;
 
   @ApiPropertyOptional()
   @IsOptional()
