@@ -1,6 +1,6 @@
 # 관리자 매장 운영 현황 API (F-018)
 
-> **기준 PRD**: [`docs/README.md`](../../README.md) §3 F-018 · **상태**: 구현 예정 · **독자**: 백엔드 구현자, 어드민 프론트 개발자
+> **기준 PRD**: [`docs/README.md`](../../README.md) §3 F-018 · **상태**: 구현완료 (#98~#101) · **독자**: 백엔드 구현자, 어드민 프론트 개발자
 >
 > 이 문서는 "어떻게 호출하고 무엇이 돌아오는가"와 구현 가이드를 정의한다. 통과/실패 판정 기준(`✅`)은
 > PRD가 단일 진실 공급원(SSOT)이며, 둘이 어긋나면 PRD를 기준으로 이 문서를 고친다.
@@ -30,7 +30,7 @@
 | 주입 | `@CurrentAdmin()`, `@CurrentAdminId()` (`src/modules/admin-auth/decorators/current-admin.decorator.ts`) |
 | 실패 | Bearer 누락 401 `AUTHENTICATION_REQUIRED` · 서명/만료/페이로드 불량 401 `TOKEN_INVALID` · 관리자 없음 401 `ADMIN_NOT_FOUND` · 비활성 401 `ADMIN_INACTIVE` |
 | 타 액터 토큰 | 점주·고객 토큰은 시크릿이 달라 서명 단계에서 `TOKEN_INVALID` |
-| 선행 | F-019(auth.md §9 PR-1)가 머지되어야 이 문서의 엔드포인트를 보호할 수 있다 |
+| 선행 | F-019(#96) 머지됨 |
 
 ### 2.2 기존 피드백 admin 이관
 
@@ -442,10 +442,10 @@ CREATE INDEX idx_store_created ON reservations (store_id, created_at);
 
 | 순서 | PR | 내용 | 의존 |
 |---|---|---|---|
-| 1 | PR-1 관리자 인증·계정(F-019) | `admins`·`admin_refresh_tokens` 마이그레이션, `admin-auth` 모듈(login/refresh/logout/me/password + `AdminAuthGuard`), CLI, `JWT_ADMIN_*` 환경변수, feedbacks 이관·정적 토큰 제거. 상세 auth.md §9 | 운영 DB 선반영 필요(선행) |
-| 2 | PR-2 뼈대 | `AdminModule`, `admin-stores.controller`(라우트 5개 골격, `timeseries` 정적 경로 먼저 선언), DTO 전부, `store-ops-metrics.util` + spec, `admin-store.service`(404·storeStatus) | PR-1(가드 의존) |
-| 3a | PR-3 목록/요약 | `admin-store-metrics.service` + spec, 4.1·4.2 연결 | PR-2 |
-| 3b | PR-4 추이 | `admin-store-timeseries.service` + spec, 4.3(매장)·4.5(플랫폼) 연결, `kstWeekStart` util | PR-2 (3a와 병렬) |
-| 3c | PR-5 예약 목록 | `admin-store-reservations.service` + spec, 4.4 연결 | PR-2 (3a·3b와 병렬) |
+| 1 | PR-1 관리자 인증·계정(F-019) — #96 | `admins`·`admin_refresh_tokens` 마이그레이션, `admin-auth` 모듈(login/refresh/logout/me/password + `AdminAuthGuard`), CLI, `JWT_ADMIN_*` 환경변수, feedbacks 이관·정적 토큰 제거. 상세 auth.md §9 | 운영 DB 선반영 필요(선행) |
+| 2 | PR-2 뼈대 — #98 | `AdminModule`, `admin-stores.controller`(라우트 5개 골격, `timeseries` 정적 경로 먼저 선언), DTO 전부, `store-ops-metrics.util` + spec, `admin-store.service`(404·storeStatus) | PR-1(가드 의존) |
+| 3a | PR-3 목록/요약 — #99 | `admin-store-metrics.service` + spec, 4.1·4.2 연결 | PR-2 |
+| 3b | PR-4 추이 — #100 | `admin-store-timeseries.service` + spec, 4.3(매장)·4.5(플랫폼) 연결, `kstWeekStart` util | PR-2 (3a와 병렬) |
+| 3c | PR-5 예약 목록 — #101 | `admin-store-reservations.service` + spec, 4.4 연결 | PR-2 (3a·3b와 병렬) |
 | 4 | PR-6 인덱스 | 7.6 마이그레이션 SQL + `schema.prisma` | DBA 조율 후 별도. **1차 범위에서는 보류**(예약 증가 후) |
-| 마감 | PRD 상태 확정 | `docs/README.md` §2 F-018·F-019 `구현예정` → `구현완료`, §1.3·F-014·§4.3·§4.4의 "구현 시 적용"/"현재는 정적 토큰" 문구 정리 | PR-1~5 머지 후 |
+| 마감 | PRD 상태 확정 — 완료 | `docs/README.md` §2 F-018·F-019 `구현예정` → `구현완료`, §1.3·F-014·§4.3·§4.4의 "구현 시 적용"/"현재는 정적 토큰" 문구 정리 | PR-1~5 머지 후 |
