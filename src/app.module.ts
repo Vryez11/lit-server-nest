@@ -9,6 +9,7 @@ import { R2StorageModule } from './common/storage/r2-storage.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { CustomerAuthModule } from './modules/customer-auth/customer-auth.module';
 import { CustomerStoresModule } from './modules/customer-stores/customer-stores.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
@@ -45,6 +46,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
     AddressesModule,
     AuthModule,
     AdminAuthModule,
+    AdminModule,
     CustomerAuthModule,
     CustomerStoresModule,
     CouponsModule,
